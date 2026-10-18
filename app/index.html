@@ -107,11 +107,6 @@
 
     <h2>Sesiones guardadas</h2>
     <div id="sessList"><p class="hint">Aún no hay sesiones.</p></div>
-
-    <h2>Configuración</h2>
-    <label>URL del script de Google Sheets</label>
-    <input id="fUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" inputmode="url">
-    <p class="hint">Se pega una sola vez. Ver instrucciones en LEEME.</p>
   </div>
 </section>
 
@@ -151,12 +146,14 @@
   const LS = { cfg: 'ocv_cfg', sessions: 'ocv_sessions', active: 'ocv_active' };
   const OCC = [ {v:1, big:'1', lbl:'ocupante'}, {v:2, big:'2', lbl:'ocupantes'}, {v:3, big:'3+', lbl:'ocupantes'} ];
   const PERIOD_MIN = 15;
+  // Destino fijo de los datos (Apps Script de la hoja del estudio). Los encuestadores no lo pueden cambiar.
+  const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw3dCka9E4nWu-3ihOS40vWtV2flRqso8GTqflzbo8gcYTyn_yn7xzbf1KQzWvTfmEG-A/exec';
 
   // ---------- Almacenamiento ----------
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('⚠ No se pudo guardar: ' + e.message); } };
 
-  let cfg = load(LS.cfg, { loc: '', obs: '', url: '', lanes: ['Express', 'Normal'], sel: ['Express'] });
+  let cfg = load(LS.cfg, { loc: '', obs: '', lanes: ['Express', 'Normal'], sel: ['Express'] });
   let sessions = load(LS.sessions, []);     // sesiones terminadas
   let active = load(LS.active, null);       // sesión en curso: {id, loc, obs, lanes, start, ev:[[t, lane, occ], ...]}
   let viewing = null;                       // sesión mostrada en el resumen
@@ -175,7 +172,7 @@
 
   // ---------- Inicio ----------
   function renderHome() {
-    $('fLoc').value = cfg.loc; $('fObs').value = cfg.obs; $('fUrl').value = cfg.url;
+    $('fLoc').value = cfg.loc; $('fObs').value = cfg.obs;
     $('laneChips').innerHTML = cfg.lanes.map(l =>
       `<button class="chip ${cfg.sel.includes(l) ? 'on' : ''}" data-lane="${esc(l)}">${esc(l)}</button>`).join('');
     $('bResume').style.display = active ? 'block' : 'none';
@@ -188,8 +185,8 @@
         <div class="hint">${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.ev.length} autos · ${st}</div></div>`;
     }).join('') : '<p class="hint">Aún no hay sesiones.</p>';
   }
-  function saveCfg() { cfg.loc = $('fLoc').value.trim(); cfg.obs = $('fObs').value.trim(); cfg.url = $('fUrl').value.trim(); save(LS.cfg, cfg); }
-  ['fLoc', 'fObs', 'fUrl'].forEach(id => $(id).addEventListener('change', saveCfg));
+  function saveCfg() { cfg.loc = $('fLoc').value.trim(); cfg.obs = $('fObs').value.trim(); save(LS.cfg, cfg); }
+  ['fLoc', 'fObs'].forEach(id => $(id).addEventListener('change', saveCfg));
   $('laneChips').addEventListener('click', e => {
     const l = e.target.dataset && e.target.dataset.lane; if (!l) return;
     cfg.sel = cfg.sel.includes(l) ? cfg.sel.filter(x => x !== l) : cfg.lanes.filter(x => x === l || cfg.sel.includes(x));
@@ -336,13 +333,12 @@
   $('bUpload').addEventListener('click', async () => {
     saveCfg();
     const s = viewing;
-    if (!cfg.url) return toast('Primero pega la URL del script en Configuración (inicio)', 3500);
     if (!navigator.onLine) return toast('Sin internet. Los datos siguen guardados; intenta al tener señal.', 3500);
     const btn = $('bUpload'); btn.disabled = true; btn.textContent = 'Subiendo…';
     try {
       const payload = { sessionId: s.id, ubicacion: s.loc, observador: s.obs, inicio: s.start, fin: s.end, registros: rowsFor(s) };
       // text/plain evita el "preflight" CORS que Apps Script no soporta
-      const res = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+      const res = await fetch(SHEETS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error || 'respuesta inválida');
       s.uploaded = true; s.uploadedAt = Date.now(); save(LS.sessions, sessions);
@@ -374,7 +370,12 @@
   // ---------- Arranque ----------
   renderHome();
   if (active) startCounting();   // si la app se cerró a medio conteo, regresa directo a contar
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    // Cuando se publica una versión nueva, se aplica sola (nunca a media cuenta: solo si no hay conteo en curso)
+    const hadSW = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !active) location.reload(); });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 })();
 </script>

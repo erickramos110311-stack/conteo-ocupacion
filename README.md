@@ -16,14 +16,14 @@ App para iPhone y Android: 3 botones (1 · 2 · 3+ ocupantes) por carril. Funcio
    - Ejecutar como: **Yo**
    - Quién tiene acceso: **Cualquier usuario**
 4. Autoriza los permisos y copia la **URL que termina en `/exec`**.
-5. En la app, pega esa URL en **Configuración** (pantalla de inicio). Cada teléfono la pega una vez.
+5. Esa URL va fija dentro de la app, en la constante `SHEETS_URL` de `app/index.html`. Los encuestadores no la ven ni la pueden cambiar. Si algún día usas otra hoja, cambia esa línea y publica una versión nueva (ver abajo).
 
-Si cambias `Code.gs` después: Implementar → Administrar implementaciones → editar → Versión nueva. Así la URL no cambia.
+Si cambias `Code.gs` después: Implementar → Administrar implementaciones → editar (lápiz) → Versión: **Nueva versión**. Así la URL no cambia y no hay que tocar la app. No uses "Nueva implementación", porque esa crea otra URL.
 
 ## 2. Publicación
 Ya está publicada en GitHub Pages (ver URL arriba).
 
-Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERSION` en `app/sw.js`** (ej. `ocv-v2`) y haz push a `main`. Los teléfonos reciben la versión nueva la siguiente vez que abran la app con internet; ciérrala y vuelve a abrirla. Si no subes `VERSION`, los teléfonos se quedan con la versión guardada.
+Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERSION` en `app/sw.js`** (ej. de `ocv-v2` a `ocv-v3`) y haz push a `main`. Los teléfonos reciben la versión nueva sola la siguiente vez que abran la app con internet. Nunca se recarga a media cuenta: si hay un conteo en curso, la versión nueva entra al terminarlo y volver a abrir la app. Si no subes `VERSION`, los teléfonos se quedan con la versión guardada.
 
 ## 3. Instalar en cada teléfono (con internet, una vez)
 - **iPhone (Safari)**: abre https://erickramos110311-stack.github.io/conteo-ocupacion/ → Compartir → **Agregar a pantalla de inicio**.
