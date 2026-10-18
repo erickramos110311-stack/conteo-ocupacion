@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ocupación">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>Conteo de Ocupación</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #151b2e; --line: #26304a; --text: #e8ecf5; --muted: #8b95ad;
+    --c1: #2563eb; --c2: #16a34a; --c3: #ea580c; --danger: #dc2626; --accent: #f5c518;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overscroll-behavior: none; }
+  button { font: inherit; color: inherit; border: 0; cursor: pointer; touch-action: manipulation; }
+  .screen { display: none; height: 100%; flex-direction: column; }
+  .screen.on { display: flex; }
+  .scroll { overflow-y: auto; padding: 16px; flex: 1; }
+  h1 { font-size: 22px; margin: 4px 0 16px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--text); }
+  .btn { display: block; width: 100%; padding: 15px; border-radius: 12px; background: var(--panel);
+    border: 1px solid var(--line); font-weight: 600; margin-top: 10px; }
+  .btn.primary { background: var(--accent); color: #111; border-color: var(--accent); }
+  .btn.danger { background: transparent; color: #f87171; border-color: #7f1d1d; }
+  .btn:disabled { opacity: .5; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .lanes { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { padding: 10px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
+  .chip.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+  .hint { font-size: 13px; color: var(--muted); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
+  .card .t { font-weight: 600; }
+  .ok { color: #4ade80; } .warn { color: #fbbf24; }
+
+  /* ---- Pantalla de conteo ---- */
+  #count { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--line); font-size: 14px; }
+  .topbar b { font-size: 18px; }
+  .pads { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 6px; min-height: 0; }
+  .lane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .lane-h { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); padding: 2px 4px 4px; }
+  .lane-h b { color: var(--text); }
+  .keys { flex: 1; display: flex; gap: 6px; min-height: 0; }
+  .key { flex: 1; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; position: relative; overflow: hidden; touch-action: none; }
+  .key.k1 { background: var(--c1); } .key.k2 { background: var(--c2); } .key.k3 { background: var(--c3); }
+  .key .big { font-size: clamp(40px, 13vw, 96px); font-weight: 800; line-height: 1; }
+  .key .lbl { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .key .n { font-size: clamp(18px, 5vw, 28px); font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .key::after { content: ""; position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .key.hit::after { animation: flash .18s ease-out; }
+  @keyframes flash { from { opacity: .55; } to { opacity: 0; } }
+  .bottombar { display: flex; gap: 6px; padding: 6px; }
+  .bottombar button { flex: 1; padding: 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); font-weight: 600; }
+  .bottombar .end { flex: .7; color: #f87171; border-color: #7f1d1d; }
+
+  /* ---- Resumen ---- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 4px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; }
+  tr.tot td { font-weight: 700; border-top: 2px solid var(--muted); }
+  .pct { color: var(--muted); }
+  .tblwrap { overflow-x: auto; }
+  #toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: #000c; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 9; max-width: 90%; text-align: center; }
+</style>
+</head>
+<body>
+
+<!-- ============ INICIO ============ -->
+<section id="home" class="screen on">
+  <div class="scroll">
+    <h1>🚗 Conteo de ocupación vehicular</h1>
+
+    <label>Ubicación / punto de aforo</label>
+    <input id="fLoc" placeholder="Ej. AV MORONES PRIETO" autocomplete="off">
+
+    <label>Observador</label>
+    <input id="fObs" placeholder="Tu nombre" autocomplete="off">
+
+    <label>Carriles a contar en este teléfono</label>
+    <div class="lanes" id="laneChips"></div>
+    <div class="row" style="margin-top:8px">
+      <input id="fNewLane" placeholder="Otro carril (ej. Carril 3)">
+      <button class="btn" style="margin:0;flex:.4" id="bAddLane">Agregar</button>
+    </div>
+    <p class="hint">Recomendado: 1 carril por persona. Con 2 carriles aparecen 2 filas de botones.</p>
+
+    <button class="btn primary" id="bStart">▶ Empezar conteo</button>
+    <button class="btn" id="bResume" style="display:none">↩ Continuar conteo en curso</button>
+
+    <h2>Sesiones guardadas</h2>
+    <div id="sessList"><p class="hint">Aún no hay sesiones.</p></div>
+
+    <h2>Configuración</h2>
+    <label>URL del script de Google Sheets</label>
+    <input id="fUrl" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off" inputmode="url">
+    <p class="hint">Se pega una sola vez. Ver instrucciones en LEEME.</p>
+  </div>
+</section>
+
+<!-- ============ CONTEO ============ -->
+<section id="count" class="screen">
+  <div class="topbar">
+    <div><div id="cLoc" style="font-weight:600"></div><div class="hint" id="cPer"></div></div>
+    <div style="text-align:right"><b id="cTot">0</b> autos<div class="hint" id="cClock"></div></div>
+  </div>
+  <div class="pads" id="pads"></div>
+  <div class="bottombar">
+    <button id="bUndo">↶ Deshacer</button>
+    <button class="end" id="bEnd">■ Terminar</button>
+  </div>
+</section>
+
+<!-- ============ RESUMEN ============ -->
+<section id="summary" class="screen">
+  <div class="scroll">
+    <h1 id="sTitle">Resumen</h1>
+    <div class="hint" id="sMeta"></div>
+    <div id="sTables"></div>
+    <button class="btn primary" id="bUpload">☁ Subir a Google Sheets</button>
+    <div class="hint" id="sUpState" style="margin-top:6px"></div>
+    <button class="btn" id="bCsv">⬇ Exportar CSV (respaldo)</button>
+    <button class="btn" id="bBack">← Volver al inicio</button>
+    <button class="btn danger" id="bDel">Borrar esta sesión</button>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const LS = { cfg: 'ocv_cfg', sessions: 'ocv_sessions', active: 'ocv_active' };
+  const OCC = [ {v:1, big:'1', lbl:'ocupante'}, {v:2, big:'2', lbl:'ocupantes'}, {v:3, big:'3+', lbl:'ocupantes'} ];
+  const PERIOD_MIN = 15;
+
+  // ---------- Almacenamiento ----------
+  const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('⚠ No se pudo guardar: ' + e.message); } };
+
+  let cfg = load(LS.cfg, { loc: '', obs: '', url: '', lanes: ['Express', 'Normal'], sel: ['Express'] });
+  let sessions = load(LS.sessions, []);     // sesiones terminadas
+  let active = load(LS.active, null);       // sesión en curso: {id, loc, obs, lanes, start, ev:[[t, lane, occ], ...]}
+  let viewing = null;                       // sesión mostrada en el resumen
+
+  // ---------- Utilidades ----------
+  const pad2 = n => String(n).padStart(2, '0');
+  const hhmm = d => pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  const ymd = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  const periodStart = t => { const d = new Date(t); d.setSeconds(0, 0); d.setMinutes(d.getMinutes() - d.getMinutes() % PERIOD_MIN); return d; };
+  const periodLabel = t => { const a = periodStart(t); const b = new Date(a.getTime() + PERIOD_MIN * 60000); return hhmm(a) + ' - ' + hhmm(b); };
+  const pct = (n, tot) => tot ? (100 * n / tot).toFixed(1) + ' %' : '–';
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let toastT;
+  function toast(msg, ms = 2200) { const el = $('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms); }
+  function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+
+  // ---------- Inicio ----------
+  function renderHome() {
+    $('fLoc').value = cfg.loc; $('fObs').value = cfg.obs; $('fUrl').value = cfg.url;
+    $('laneChips').innerHTML = cfg.lanes.map(l =>
+      `<button class="chip ${cfg.sel.includes(l) ? 'on' : ''}" data-lane="${esc(l)}">${esc(l)}</button>`).join('');
+    $('bResume').style.display = active ? 'block' : 'none';
+    $('bStart').style.display = active ? 'none' : 'block';
+    const list = sessions.slice().reverse();
+    $('sessList').innerHTML = list.length ? list.map(s => {
+      const d = new Date(s.start);
+      const st = s.uploaded ? '<span class="ok">✓ subida</span>' : '<span class="warn">● pendiente de subir</span>';
+      return `<div class="card" data-sid="${s.id}"><div class="t">${esc(s.loc)} · ${esc(s.lanes.join(', '))}</div>
+        <div class="hint">${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.ev.length} autos · ${st}</div></div>`;
+    }).join('') : '<p class="hint">Aún no hay sesiones.</p>';
+  }
+  function saveCfg() { cfg.loc = $('fLoc').value.trim(); cfg.obs = $('fObs').value.trim(); cfg.url = $('fUrl').value.trim(); save(LS.cfg, cfg); }
+  ['fLoc', 'fObs', 'fUrl'].forEach(id => $(id).addEventListener('change', saveCfg));
+  $('laneChips').addEventListener('click', e => {
+    const l = e.target.dataset && e.target.dataset.lane; if (!l) return;
+    cfg.sel = cfg.sel.includes(l) ? cfg.sel.filter(x => x !== l) : cfg.lanes.filter(x => x === l || cfg.sel.includes(x));
+    save(LS.cfg, cfg); renderHome();
+  });
+  $('bAddLane').addEventListener('click', () => {
+    const l = $('fNewLane').value.trim(); if (!l) return;
+    if (!cfg.lanes.includes(l)) cfg.lanes.push(l);
+    if (!cfg.sel.includes(l)) cfg.sel.push(l);
+    $('fNewLane').value = ''; save(LS.cfg, cfg); renderHome();
+  });
+  $('sessList').addEventListener('click', e => {
+    const c = e.target.closest('[data-sid]'); if (!c) return;
+    viewing = sessions.find(s => s.id === c.dataset.sid); if (viewing) renderSummary();
+  });
+  $('bStart').addEventListener('click', () => {
+    saveCfg();
+    if (!cfg.loc) return toast('Escribe la ubicación');
+    if (!cfg.sel.length) return toast('Selecciona al menos un carril');
+    active = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), loc: cfg.loc, obs: cfg.obs,
+               lanes: cfg.sel.slice(), start: Date.now(), ev: [] };
+    save(LS.active, active);
+    startCounting();
+  });
+  $('bResume').addEventListener('click', startCounting);
+
+  // ---------- Conteo (ruta crítica: lo más rápido posible) ----------
+  let counts, countEls, totEl, saveTimer, clockTimer, wakeLock;
+
+  function startCounting() {
+    counts = active.lanes.map(() => [0, 0, 0, 0]);   // [_, 1, 2, 3+]
+    for (const [, l, o] of active.ev) counts[l][o]++;
+    $('cLoc').textContent = active.loc;
+    $('pads').innerHTML = active.lanes.map((name, li) => `
+      <div class="lane">
+        <div class="lane-h"><b>${esc(name)}</b><span id="lt${li}"></span></div>
+        <div class="keys">${OCC.map(o => `
+          <div class="key k${o.v}" data-l="${li}" data-o="${o.v}">
+            <div class="big">${o.big}</div><div class="lbl">${o.lbl}</div><div class="n" id="n${li}_${o.v}">0</div>
+          </div>`).join('')}
+        </div>
+      </div>`).join('');
+    countEls = active.lanes.map((_, li) => [null, $('n' + li + '_1'), $('n' + li + '_2'), $('n' + li + '_3'), $('lt' + li)]);
+    totEl = $('cTot');
+    active.lanes.forEach((_, li) => paintLane(li));
+    totEl.textContent = active.ev.length;
+    tickClock(); clearInterval(clockTimer); clockTimer = setInterval(tickClock, 1000);
+    requestWake();
+    show('count');
+  }
+  function paintLane(li) {
+    const c = counts[li], e = countEls[li];
+    e[1].textContent = c[1]; e[2].textContent = c[2]; e[3].textContent = c[3];
+    e[4].textContent = (c[1] + c[2] + c[3]) + ' autos';
+  }
+  function tickClock() {
+    const now = Date.now();
+    $('cClock').textContent = hhmm(new Date(now)) + ':' + pad2(new Date(now).getSeconds());
+    $('cPer').textContent = 'Periodo ' + periodLabel(now);
+  }
+  function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => save(LS.active, active), 300); }
+
+  // pointerdown = respuesta inmediata, sin el retraso del "click"; acepta toques simultáneos con varios dedos
+  $('pads').addEventListener('pointerdown', e => {
+    const k = e.target.closest('.key'); if (!k) return;
+    e.preventDefault();
+    const l = +k.dataset.l, o = +k.dataset.o;
+    active.ev.push([Date.now(), l, o]);
+    counts[l][o]++;
+    countEls[l][o].textContent = counts[l][o];
+    countEls[l][4].textContent = (counts[l][1] + counts[l][2] + counts[l][3]) + ' autos';
+    totEl.textContent = active.ev.length;
+    k.classList.remove('hit'); void k.offsetWidth; k.classList.add('hit');
+    if (navigator.vibrate) navigator.vibrate(12);
+    scheduleSave();
+  }, { passive: false });
+  $('pads').addEventListener('contextmenu', e => e.preventDefault());
+
+  $('bUndo').addEventListener('click', () => {
+    const last = active.ev.pop(); if (!last) return toast('Nada que deshacer');
+    counts[last[1]][last[2]]--; paintLane(last[1]); totEl.textContent = active.ev.length;
+    toast(`Deshecho: ${active.lanes[last[1]]} · ${last[2] === 3 ? '3+' : last[2]}`, 1200);
+    scheduleSave();
+  });
+  $('bEnd').addEventListener('click', () => {
+    if (!confirm('¿Terminar el conteo?')) return;
+    clearInterval(clockTimer); clearTimeout(saveTimer); releaseWake();
+    active.end = Date.now(); active.uploaded = false;
+    sessions.push(active); save(LS.sessions, sessions);
+    viewing = active; active = null; localStorage.removeItem(LS.active);
+    renderSummary();
+  });
+  // Guardar al salir/minimizar
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && active) save(LS.active, active);
+    if (document.visibilityState === 'visible' && active && $('count').classList.contains('on')) requestWake();
+  });
+  window.addEventListener('pagehide', () => { if (active) save(LS.active, active); });
+
+  async function requestWake() { try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+  function releaseWake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
+
+  // ---------- Resumen ----------
+  function summarize(s) {
+    // {laneIdx: {periodLabel: [_,1,2,3]}}
+    const out = s.lanes.map(() => new Map());
+    for (const [t, l, o] of s.ev) {
+      const key = periodStart(t).getTime();
+      if (!out[l].has(key)) out[l].set(key, [0, 0, 0, 0]);
+      out[l].get(key)[o]++;
+    }
+    return out;
+  }
+  function renderSummary() {
+    const s = viewing, d = new Date(s.start);
+    $('sTitle').textContent = s.loc;
+    $('sMeta').textContent = `${ymd(d)} · ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.obs || 'sin observador'} · ${s.ev.length} autos`;
+    const sum = summarize(s);
+    $('sTables').innerHTML = s.lanes.map((name, li) => {
+      const rows = [...sum[li].entries()].sort((a, b) => a[0] - b[0]);
+      const T = [0, 0, 0, 0];
+      const body = rows.map(([k, c]) => {
+        const tot = c[1] + c[2] + c[3]; T[1] += c[1]; T[2] += c[2]; T[3] += c[3];
+        return `<tr><td>${periodLabel(k)}</td><td>${c[1]}</td><td>${c[2]}</td><td>${c[3]}</td>
+          <td class="pct">${pct(c[1], tot)}</td><td class="pct">${pct(c[2], tot)}</td><td class="pct">${pct(c[3], tot)}</td></tr>`;
+      }).join('');
+      const tt = T[1] + T[2] + T[3];
+      return `<h2>Carril ${esc(name)}</h2><div class="tblwrap"><table>
+        <tr><th>Periodo</th><th>1</th><th>2</th><th>3+</th><th>1 %</th><th>2 %</th><th>3+ %</th></tr>
+        ${body || '<tr><td colspan="7" class="hint">Sin registros</td></tr>'}
+        <tr class="tot"><td>TOTAL</td><td>${T[1]}</td><td>${T[2]}</td><td>${T[3]}</td>
+          <td>${pct(T[1], tt)}</td><td>${pct(T[2], tt)}</td><td>${pct(T[3], tt)}</td></tr></table></div>`;
+    }).join('');
+    $('sUpState').innerHTML = s.uploaded ? `<span class="ok">✓ Subida ${s.uploadedAt ? hhmm(new Date(s.uploadedAt)) : ''}</span>` : '<span class="warn">Pendiente de subir</span>';
+    show('summary');
+  }
+  function rowsFor(s) {
+    return s.ev.map(([t, l, o]) => {
+      const d = new Date(t);
+      return { fecha: ymd(d), hora: hhmm(d) + ':' + pad2(d.getSeconds()), periodo: periodLabel(t),
+               carril: s.lanes[l], ocupantes: o === 3 ? '3+' : String(o), ts: t };
+    });
+  }
+  $('bUpload').addEventListener('click', async () => {
+    saveCfg();
+    const s = viewing;
+    if (!cfg.url) return toast('Primero pega la URL del script en Configuración (inicio)', 3500);
+    if (!navigator.onLine) return toast('Sin internet. Los datos siguen guardados; intenta al tener señal.', 3500);
+    const btn = $('bUpload'); btn.disabled = true; btn.textContent = 'Subiendo…';
+    try {
+      const payload = { sessionId: s.id, ubicacion: s.loc, observador: s.obs, inicio: s.start, fin: s.end, registros: rowsFor(s) };
+      // text/plain evita el "preflight" CORS que Apps Script no soporta
+      const res = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error || 'respuesta inválida');
+      s.uploaded = true; s.uploadedAt = Date.now(); save(LS.sessions, sessions);
+      toast(`✓ ${j.filas} registros subidos`); renderSummary();
+    } catch (e) {
+      toast('✗ Error al subir: ' + e.message + '. Los datos siguen guardados.', 4500);
+    } finally { btn.disabled = false; btn.textContent = '☁ Subir a Google Sheets'; }
+  });
+  $('bCsv').addEventListener('click', async () => {
+    const s = viewing;
+    const lines = [['sesion', 'ubicacion', 'observador', 'carril', 'fecha', 'hora', 'periodo', 'ocupantes'].join(',')]
+      .concat(rowsFor(s).map(r => [s.id, s.loc, s.obs, r.carril, r.fecha, r.hora, r.periodo, r.ocupantes]
+        .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')));
+    const name = `ocupacion_${s.loc.replace(/\W+/g, '_')}_${ymd(new Date(s.start))}_${s.id}.csv`;
+    const file = new File(['﻿' + lines.join('\n')], name, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+  $('bBack').addEventListener('click', () => { renderHome(); show('home'); });
+  $('bDel').addEventListener('click', () => {
+    const s = viewing;
+    if (!confirm(s.uploaded ? '¿Borrar esta sesión del teléfono?' : '⚠ Esta sesión NO se ha subido. ¿Borrarla de todos modos?')) return;
+    sessions = sessions.filter(x => x !== s); save(LS.sessions, sessions); renderHome(); show('home');
+  });
+
+  // ---------- Arranque ----------
+  renderHome();
+  if (active) startCounting();   // si la app se cerró a medio conteo, regresa directo a contar
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+})();
+</script>
+</body>
+</html>
