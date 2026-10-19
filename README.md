@@ -69,6 +69,13 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
 
 Las pestañas Por carril y Resumen se recalculan con cada subida y juntan los datos de todos los teléfonos.
 
+### Ver un día o un punto
+En el renglón 1 de **Resumen** y de **Por carril** hay dos listas desplegables:
+- **Ver día**: "Todos los días" o una fecha (la lista se llena sola con los días que tienen datos).
+- **Ver punto**: "Todos" o Punto 1 al 5.
+
+Al elegir, la pestaña muestra solo esas tablas. El renglón 2 dice qué se está mostrando. No se borra nada: elige "Todos" para ver todo otra vez. Cada pestaña tiene sus propios selectores.
+
 ## Recomendaciones
 - Una persona por carril y un teléfono cada quien. Antes de salir a campo, asigna a cada observador su carril.
 - Sincroniza la hora de los teléfonos (automática) para que los periodos coincidan.
