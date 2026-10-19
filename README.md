@@ -1,6 +1,6 @@
 # Conteo de Ocupación Vehicular
 
-App para iPhone y Android: 3 botones (1 · 2 · 3+ ocupantes) por carril. Funciona sin internet y sube los datos a Google Sheets con un botón.
+App para iPhone y Android para estudios de ocupación vehicular. **Cada observador cuenta un solo carril** con 3 botones (1 · 2 · 3+ ocupantes). Funciona sin internet y sube los datos a Google Sheets con un botón.
 
 **App publicada:** https://erickramos110311-stack.github.io/conteo-ocupacion/
 
@@ -18,7 +18,19 @@ App para iPhone y Android: 3 botones (1 · 2 · 3+ ocupantes) por carril. Funcio
 4. Autoriza los permisos y copia la **URL que termina en `/exec`**.
 5. Esa URL va fija dentro de la app, en la constante `SHEETS_URL` de `app/index.html`. Los encuestadores no la ven ni la pueden cambiar. Si algún día usas otra hoja, cambia esa línea y publica una versión nueva (ver abajo).
 
-Si cambias `Code.gs` después: Implementar → Administrar implementaciones → editar (lápiz) → Versión: **Nueva versión**. Así la URL no cambia y no hay que tocar la app. No uses "Nueva implementación", porque esa crea otra URL.
+### La lista de carriles (pestaña "Carriles")
+La pestaña **Carriles** de la hoja es la lista que ven los observadores en la app. Se crea sola la primera vez con AV MORONES PRIETO (Express 1 y 2, Normal 4 y 5). Para agregar otra avenida o carril, escribe un renglón nuevo:
+
+| Ubicacion | Tipo | Carril |
+|---|---|---|
+| AV CONSTITUCION | Express | 1 |
+
+- **Tipo**: `Express` o `Normal`. Los carriles del mismo tipo se suman en el Resumen.
+- Escribe la ubicación siempre igual en todos sus renglones.
+- Los teléfonos descargan la lista cada vez que abren la app con internet.
+
+### Si cambias `Code.gs` después
+ Implementar → Administrar implementaciones → editar (lápiz) → Versión: **Nueva versión**. Así la URL no cambia y no hay que tocar la app. No uses "Nueva implementación", porque esa crea otra URL.
 
 ## 2. Publicación
 Ya está publicada en GitHub Pages (ver URL arriba).
@@ -32,7 +44,7 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
 Ábrela una vez con internet. A partir de ahí abre y cuenta sin señal.
 
 ## Uso en campo
-1. Escribe la ubicación (ej. `AV MORONES PRIETO`) y tu nombre, elige el carril (Express / Normal / otro) → **Empezar**.
+1. Elige la **ubicación**, **tu carril** (ej. Express · Carril 2) y escribe **tu nombre**. El botón dice exactamente qué vas a contar: **▶ Empezar: Express · Carril 2**.
 2. Toca **1**, **2** o **3+** cada vez que pasa un auto. El botón responde al tocarlo, sin esperar a soltar el dedo, y acepta toques con dos dedos a la vez.
 3. **Deshacer** borra el último toque.
 4. La pantalla se mantiene encendida. Si la app se cierra o se acaba la batería, al abrirla regresa al conteo con todo lo guardado.
@@ -41,10 +53,14 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
    - **Exportar CSV** sirve de respaldo (WhatsApp, correo, Drive).
 
 ## Qué aparece en Google Sheets
-- **Registros**: un renglón por auto (sesión, ubicación, observador, carril, fecha, hora, periodo, ocupantes).
-- **Resumen**: tablas por ubicación / carril / fecha con periodos de 15 min, 1 / 2 / 3+ ocupantes, porcentajes y TOTAL, con el mismo formato que el estudio. Se recalcula con cada subida y junta los datos de todos los teléfonos.
+- **Carriles**: la lista de ubicaciones y carriles (la editas tú).
+- **Registros**: un renglón por auto (sesión, ubicación, observador, tipo, carril, fecha, hora, periodo, ocupantes). No se edita a mano.
+- **Por carril**: cada carril por separado, en periodos de 15 min, separado en MAÑANA y TARDE.
+- **Resumen**: los carriles del mismo tipo sumados (CARRILES EXPRESS, CARRILES NORMAL) con 1 / 2 / 3+ ocupantes, porcentajes y TOTAL por turno, como en el estudio.
+
+Las pestañas Por carril y Resumen se recalculan con cada subida y juntan los datos de todos los teléfonos.
 
 ## Recomendaciones
-- Una persona por carril (o por grupo de carriles) y un teléfono cada quien.
+- Una persona por carril y un teléfono cada quien. Antes de salir a campo, asigna a cada observador su carril.
 - Sincroniza la hora de los teléfonos (automática) para que los periodos coincidan.
 - Los datos viven en el teléfono hasta que se suben. No borres datos de Safari/Chrome sin subir antes.

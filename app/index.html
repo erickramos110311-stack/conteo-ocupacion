@@ -38,9 +38,12 @@
   .btn:disabled { opacity: .5; }
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; }
-  .lanes { display: flex; flex-wrap: wrap; gap: 8px; }
-  .chip { padding: 10px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); }
-  .chip.on { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .opts.one { grid-template-columns: 1fr; }
+  .opt { padding: 14px 10px; border-radius: 12px; background: var(--panel); border: 2px solid var(--line); text-align: center; font-weight: 600; }
+  .opt small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
+  .opt.on { background: var(--accent); color: #111; border-color: var(--accent); }
+  .opt.on small { color: #3b3200; }
   .hint { font-size: 13px; color: var(--muted); }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
   .card .t { font-weight: 600; }
@@ -51,6 +54,7 @@
   .topbar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;
     background: var(--panel); border-bottom: 1px solid var(--line); font-size: 14px; }
   .topbar b { font-size: 18px; }
+  .topbar .lane-name { font-size: 18px; font-weight: 800; color: var(--accent); text-transform: uppercase; }
   .pads { flex: 1; display: flex; flex-direction: column; gap: 6px; padding: 6px; min-height: 0; }
   .lane { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .lane-h { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); padding: 2px 4px 4px; }
@@ -78,7 +82,7 @@
   .pct { color: var(--muted); }
   .tblwrap { overflow-x: auto; }
   #toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-    background: #000c; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 9; max-width: 90%; text-align: center; }
+    background: #000c; padding: 10px 16px; border-radius: 10px; font-size: 14px; display: none; z-index: 9; max-width: 90%; text-align: center; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -88,21 +92,17 @@
   <div class="scroll">
     <h1>🚗 Conteo de ocupación vehicular</h1>
 
-    <label>Ubicación / punto de aforo</label>
-    <input id="fLoc" placeholder="Ej. AV MORONES PRIETO" autocomplete="off">
+    <label>1. Ubicación</label>
+    <div class="opts one" id="locOpts"></div>
 
-    <label>Observador</label>
-    <input id="fObs" placeholder="Tu nombre" autocomplete="off">
+    <label>2. Tu carril</label>
+    <div class="opts" id="laneOpts"></div>
 
-    <label>Carriles a contar en este teléfono</label>
-    <div class="lanes" id="laneChips"></div>
-    <div class="row" style="margin-top:8px">
-      <input id="fNewLane" placeholder="Otro carril (ej. Carril 3)">
-      <button class="btn" style="margin:0;flex:.4" id="bAddLane">Agregar</button>
-    </div>
-    <p class="hint">Recomendado: 1 carril por persona. Con 2 carriles aparecen 2 filas de botones.</p>
+    <label>3. Tu nombre</label>
+    <input id="fObs" placeholder="Nombre del observador" autocomplete="off" autocapitalize="words">
 
-    <button class="btn primary" id="bStart">▶ Empezar conteo</button>
+    <p class="hint" id="cfgState"></p>
+    <button class="btn primary" id="bStart" disabled>▶ Empezar conteo</button>
     <button class="btn" id="bResume" style="display:none">↩ Continuar conteo en curso</button>
 
     <h2>Sesiones guardadas</h2>
@@ -113,7 +113,7 @@
 <!-- ============ CONTEO ============ -->
 <section id="count" class="screen">
   <div class="topbar">
-    <div><div id="cLoc" style="font-weight:600"></div><div class="hint" id="cPer"></div></div>
+    <div><div class="lane-name" id="cLane"></div><div class="hint" id="cLoc"></div><div class="hint" id="cPer"></div></div>
     <div style="text-align:right"><b id="cTot">0</b> autos<div class="hint" id="cClock"></div></div>
   </div>
   <div class="pads" id="pads"></div>
@@ -127,6 +127,7 @@
 <section id="summary" class="screen">
   <div class="scroll">
     <h1 id="sTitle">Resumen</h1>
+    <div class="lane-name" id="sLane" style="color:var(--accent);font-weight:800;text-transform:uppercase"></div>
     <div class="hint" id="sMeta"></div>
     <div id="sTables"></div>
     <button class="btn primary" id="bUpload">☁ Subir a Google Sheets</button>
@@ -143,20 +144,38 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const LS = { cfg: 'ocv_cfg', sessions: 'ocv_sessions', active: 'ocv_active' };
+  const LS = { cfg: 'ocv_cfg', lanes: 'ocv_lanes', sessions: 'ocv_sessions', active: 'ocv_active' };
   const OCC = [ {v:1, big:'1', lbl:'ocupante'}, {v:2, big:'2', lbl:'ocupantes'}, {v:3, big:'3+', lbl:'ocupantes'} ];
   const PERIOD_MIN = 15;
   // Destino fijo de los datos (Apps Script de la hoja del estudio). Los encuestadores no lo pueden cambiar.
   const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw3dCka9E4nWu-3ihOS40vWtV2flRqso8GTqflzbo8gcYTyn_yn7xzbf1KQzWvTfmEG-A/exec';
+  const SCRIPT_MIN = 2;  // versión mínima de Code.gs que entiende esta app
+  // Lista de respaldo si la app nunca ha podido descargar la pestaña "Carriles" de la hoja
+  const DEFAULT_LOCS = [{ nombre: 'AV MORONES PRIETO', carriles: [
+    { tipo: 'Express', num: '1' }, { tipo: 'Express', num: '2' }, { tipo: 'Normal', num: '4' }, { tipo: 'Normal', num: '5' } ] }];
 
   // ---------- Almacenamiento ----------
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('⚠ No se pudo guardar: ' + e.message); } };
 
-  let cfg = load(LS.cfg, { loc: '', obs: '', lanes: ['Express', 'Normal'], sel: ['Express'] });
-  let sessions = load(LS.sessions, []);     // sesiones terminadas
-  let active = load(LS.active, null);       // sesión en curso: {id, loc, obs, lanes, start, ev:[[t, lane, occ], ...]}
-  let viewing = null;                       // sesión mostrada en el resumen
+  let cfg = load(LS.cfg, {});                // {obs, loc, lane: 'Express|1'}
+  let lanesCfg = load(LS.lanes, null);       // {ubicaciones, at}
+  let sessions = load(LS.sessions, []);      // sesiones terminadas: {id, loc, tipo, num, obs, start, end, ev:[[t, occ]], uploaded}
+  let active = load(LS.active, null);        // sesión en curso (mismo formato, sin end)
+  let viewing = null;                        // sesión mostrada en el resumen
+
+  // Sesiones guardadas por la versión anterior (varios carriles por teléfono): se separan en una por carril
+  function migrate(s) {
+    if (!s || !Array.isArray(s.lanes)) return [s];
+    return s.lanes.map((name, li) => ({ id: s.lanes.length > 1 ? s.id + '-' + li : s.id, loc: s.loc, tipo: name, num: '?', obs: s.obs,
+      start: s.start, end: s.end || (s.ev.length ? s.ev[s.ev.length - 1][0] : s.start), uploaded: !!s.uploaded,
+      ev: s.ev.filter(e => e[1] === li).map(e => [e[0], e[2]]) }));
+  }
+  if (sessions.some(s => s.lanes) || (active && active.lanes)) {
+    sessions = sessions.flatMap(migrate);
+    if (active && active.lanes) { sessions.push(...migrate(active)); active = null; localStorage.removeItem(LS.active); }
+    save(LS.sessions, sessions);
+  }
 
   // ---------- Utilidades ----------
   const pad2 = n => String(n).padStart(2, '0');
@@ -166,48 +185,84 @@
   const periodLabel = t => { const a = periodStart(t); const b = new Date(a.getTime() + PERIOD_MIN * 60000); return hhmm(a) + ' - ' + hhmm(b); };
   const pct = (n, tot) => tot ? (100 * n / tot).toFixed(1) + ' %' : '–';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const laneName = s => `${s.tipo} · Carril ${s.num}`;
   let toastT;
   function toast(msg, ms = 2200) { const el = $('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms); }
   function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+  async function getJSON(url, ms = 10000) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), ms);
+    try { const r = await fetch(url, { signal: ctl.signal }); return await r.json(); } finally { clearTimeout(t); }
+  }
+
+  // ---------- Lista de ubicaciones y carriles (pestaña "Carriles" de la hoja) ----------
+  const locs = () => (lanesCfg && lanesCfg.ubicaciones && lanesCfg.ubicaciones.length) ? lanesCfg.ubicaciones : DEFAULT_LOCS;
+  async function refreshLanes() {
+    if (!navigator.onLine) return renderCfgState();
+    try {
+      const j = await getJSON(SHEETS_URL + '?accion=config');
+      if (j.ok && Array.isArray(j.ubicaciones) && j.ubicaciones.length) {
+        lanesCfg = { ubicaciones: j.ubicaciones, at: Date.now() }; save(LS.lanes, lanesCfg);
+        if (!active && $('home').classList.contains('on')) renderHome();
+      }
+    } catch {}
+    renderCfgState();
+  }
+  function renderCfgState() {
+    $('cfgState').textContent = lanesCfg && lanesCfg.at
+      ? `Lista de carriles actualizada ${ymd(new Date(lanesCfg.at))} ${hhmm(new Date(lanesCfg.at))}`
+      : 'Lista de carriles de respaldo. Abre la app con internet para actualizarla.';
+  }
 
   // ---------- Inicio ----------
   function renderHome() {
-    $('fLoc').value = cfg.loc; $('fObs').value = cfg.obs;
-    $('laneChips').innerHTML = cfg.lanes.map(l =>
-      `<button class="chip ${cfg.sel.includes(l) ? 'on' : ''}" data-lane="${esc(l)}">${esc(l)}</button>`).join('');
+    const L = locs();
+    if (!L.some(l => l.nombre === cfg.loc)) cfg.loc = L.length === 1 ? L[0].nombre : '';
+    const loc = L.find(l => l.nombre === cfg.loc);
+    if (!loc || !loc.carriles.some(c => c.tipo + '|' + c.num === cfg.lane)) cfg.lane = '';
+    $('locOpts').innerHTML = L.map(l => `<button class="opt ${l.nombre === cfg.loc ? 'on' : ''}" data-loc="${esc(l.nombre)}">${esc(l.nombre)}</button>`).join('');
+    $('laneOpts').innerHTML = loc
+      ? loc.carriles.map(c => { const k = c.tipo + '|' + c.num;
+          return `<button class="opt ${k === cfg.lane ? 'on' : ''}" data-lane="${esc(k)}"><small>${esc(c.tipo)}</small>Carril ${esc(c.num)}</button>`; }).join('')
+      : '<p class="hint">Primero elige la ubicación.</p>';
+    $('fObs').value = cfg.obs || '';
+    updateStart();
     $('bResume').style.display = active ? 'block' : 'none';
     $('bStart').style.display = active ? 'none' : 'block';
     const list = sessions.slice().reverse();
     $('sessList').innerHTML = list.length ? list.map(s => {
       const d = new Date(s.start);
       const st = s.uploaded ? '<span class="ok">✓ subida</span>' : '<span class="warn">● pendiente de subir</span>';
-      return `<div class="card" data-sid="${s.id}"><div class="t">${esc(s.loc)} · ${esc(s.lanes.join(', '))}</div>
-        <div class="hint">${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.ev.length} autos · ${st}</div></div>`;
+      return `<div class="card" data-sid="${esc(s.id)}"><div class="t">${esc(laneName(s))}</div>
+        <div class="hint">${esc(s.loc)} · ${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.ev.length} autos · ${st}</div></div>`;
     }).join('') : '<p class="hint">Aún no hay sesiones.</p>';
+    renderCfgState();
   }
-  function saveCfg() { cfg.loc = $('fLoc').value.trim(); cfg.obs = $('fObs').value.trim(); save(LS.cfg, cfg); }
-  ['fLoc', 'fObs'].forEach(id => $(id).addEventListener('change', saveCfg));
-  $('laneChips').addEventListener('click', e => {
-    const l = e.target.dataset && e.target.dataset.lane; if (!l) return;
-    cfg.sel = cfg.sel.includes(l) ? cfg.sel.filter(x => x !== l) : cfg.lanes.filter(x => x === l || cfg.sel.includes(x));
+  function updateStart() {
+    const b = $('bStart'), [tipo, num] = (cfg.lane || '').split('|');
+    const ready = cfg.loc && cfg.lane && (cfg.obs || '').trim();
+    b.disabled = !ready;
+    b.textContent = cfg.lane ? `▶ Empezar: ${tipo} · Carril ${num}` : '▶ Empezar conteo';
+  }
+  $('locOpts').addEventListener('click', e => {
+    const b = e.target.closest('[data-loc]'); if (!b) return;
+    if (cfg.loc !== b.dataset.loc) { cfg.loc = b.dataset.loc; cfg.lane = ''; }
     save(LS.cfg, cfg); renderHome();
   });
-  $('bAddLane').addEventListener('click', () => {
-    const l = $('fNewLane').value.trim(); if (!l) return;
-    if (!cfg.lanes.includes(l)) cfg.lanes.push(l);
-    if (!cfg.sel.includes(l)) cfg.sel.push(l);
-    $('fNewLane').value = ''; save(LS.cfg, cfg); renderHome();
+  $('laneOpts').addEventListener('click', e => {
+    const b = e.target.closest('[data-lane]'); if (!b) return;
+    cfg.lane = b.dataset.lane; save(LS.cfg, cfg); renderHome();
   });
+  $('fObs').addEventListener('input', () => { cfg.obs = $('fObs').value; save(LS.cfg, cfg); updateStart(); });
   $('sessList').addEventListener('click', e => {
     const c = e.target.closest('[data-sid]'); if (!c) return;
     viewing = sessions.find(s => s.id === c.dataset.sid); if (viewing) renderSummary();
   });
   $('bStart').addEventListener('click', () => {
-    saveCfg();
-    if (!cfg.loc) return toast('Escribe la ubicación');
-    if (!cfg.sel.length) return toast('Selecciona al menos un carril');
-    active = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), loc: cfg.loc, obs: cfg.obs,
-               lanes: cfg.sel.slice(), start: Date.now(), ev: [] };
+    const [tipo, num] = (cfg.lane || '').split('|');
+    const obs = (cfg.obs || '').trim();
+    if (!cfg.loc || !tipo || !obs) return;
+    active = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), loc: cfg.loc, tipo, num, obs,
+               start: Date.now(), ev: [] };
     save(LS.active, active);
     startCounting();
   });
@@ -217,35 +272,29 @@
   let counts, countEls, totEl, saveTimer, clockTimer, wakeLock;
 
   function startCounting() {
-    counts = active.lanes.map(() => [0, 0, 0, 0]);   // [_, 1, 2, 3+]
-    for (const [, l, o] of active.ev) counts[l][o]++;
-    $('cLoc').textContent = active.loc;
-    $('pads').innerHTML = active.lanes.map((name, li) => `
-      <div class="lane">
-        <div class="lane-h"><b>${esc(name)}</b><span id="lt${li}"></span></div>
-        <div class="keys">${OCC.map(o => `
-          <div class="key k${o.v}" data-l="${li}" data-o="${o.v}">
-            <div class="big">${o.big}</div><div class="lbl">${o.lbl}</div><div class="n" id="n${li}_${o.v}">0</div>
-          </div>`).join('')}
-        </div>
-      </div>`).join('');
-    countEls = active.lanes.map((_, li) => [null, $('n' + li + '_1'), $('n' + li + '_2'), $('n' + li + '_3'), $('lt' + li)]);
+    counts = [0, 0, 0, 0];   // [_, 1, 2, 3+]
+    for (const [, o] of active.ev) counts[o]++;
+    $('cLane').textContent = laneName(active);
+    $('cLoc').textContent = active.loc + ' · ' + active.obs;
+    $('pads').innerHTML = `<div class="lane"><div class="keys">${OCC.map(o => `
+      <div class="key k${o.v}" data-o="${o.v}">
+        <div class="big">${o.big}</div><div class="lbl">${o.lbl}</div><div class="n" id="n${o.v}">0</div>
+      </div>`).join('')}</div></div>`;
+    countEls = [null, $('n1'), $('n2'), $('n3')];
     totEl = $('cTot');
-    active.lanes.forEach((_, li) => paintLane(li));
-    totEl.textContent = active.ev.length;
+    paint();
     tickClock(); clearInterval(clockTimer); clockTimer = setInterval(tickClock, 1000);
     requestWake();
     show('count');
   }
-  function paintLane(li) {
-    const c = counts[li], e = countEls[li];
-    e[1].textContent = c[1]; e[2].textContent = c[2]; e[3].textContent = c[3];
-    e[4].textContent = (c[1] + c[2] + c[3]) + ' autos';
+  function paint() {
+    countEls[1].textContent = counts[1]; countEls[2].textContent = counts[2]; countEls[3].textContent = counts[3];
+    totEl.textContent = active.ev.length;
   }
   function tickClock() {
-    const now = Date.now();
-    $('cClock').textContent = hhmm(new Date(now)) + ':' + pad2(new Date(now).getSeconds());
-    $('cPer').textContent = 'Periodo ' + periodLabel(now);
+    const now = new Date();
+    $('cClock').textContent = hhmm(now) + ':' + pad2(now.getSeconds());
+    $('cPer').textContent = 'Periodo ' + periodLabel(now.getTime());
   }
   function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(() => save(LS.active, active), 300); }
 
@@ -253,11 +302,10 @@
   $('pads').addEventListener('pointerdown', e => {
     const k = e.target.closest('.key'); if (!k) return;
     e.preventDefault();
-    const l = +k.dataset.l, o = +k.dataset.o;
-    active.ev.push([Date.now(), l, o]);
-    counts[l][o]++;
-    countEls[l][o].textContent = counts[l][o];
-    countEls[l][4].textContent = (counts[l][1] + counts[l][2] + counts[l][3]) + ' autos';
+    const o = +k.dataset.o;
+    active.ev.push([Date.now(), o]);
+    counts[o]++;
+    countEls[o].textContent = counts[o];
     totEl.textContent = active.ev.length;
     k.classList.remove('hit'); void k.offsetWidth; k.classList.add('hit');
     if (navigator.vibrate) navigator.vibrate(12);
@@ -267,8 +315,8 @@
 
   $('bUndo').addEventListener('click', () => {
     const last = active.ev.pop(); if (!last) return toast('Nada que deshacer');
-    counts[last[1]][last[2]]--; paintLane(last[1]); totEl.textContent = active.ev.length;
-    toast(`Deshecho: ${active.lanes[last[1]]} · ${last[2] === 3 ? '3+' : last[2]}`, 1200);
+    counts[last[1]]--; paint();
+    toast(`Deshecho: ${last[1] === 3 ? '3+' : last[1]}`, 1200);
     scheduleSave();
   });
   $('bEnd').addEventListener('click', () => {
@@ -290,69 +338,74 @@
   function releaseWake() { try { wakeLock && wakeLock.release(); } catch {} wakeLock = null; }
 
   // ---------- Resumen ----------
-  function summarize(s) {
-    // {laneIdx: {periodLabel: [_,1,2,3]}}
-    const out = s.lanes.map(() => new Map());
-    for (const [t, l, o] of s.ev) {
-      const key = periodStart(t).getTime();
-      if (!out[l].has(key)) out[l].set(key, [0, 0, 0, 0]);
-      out[l].get(key)[o]++;
-    }
-    return out;
-  }
   function renderSummary() {
     const s = viewing, d = new Date(s.start);
     $('sTitle').textContent = s.loc;
+    $('sLane').textContent = laneName(s);
     $('sMeta').textContent = `${ymd(d)} · ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.obs || 'sin observador'} · ${s.ev.length} autos`;
-    const sum = summarize(s);
-    $('sTables').innerHTML = s.lanes.map((name, li) => {
-      const rows = [...sum[li].entries()].sort((a, b) => a[0] - b[0]);
-      const T = [0, 0, 0, 0];
-      const body = rows.map(([k, c]) => {
-        const tot = c[1] + c[2] + c[3]; T[1] += c[1]; T[2] += c[2]; T[3] += c[3];
-        return `<tr><td>${periodLabel(k)}</td><td>${c[1]}</td><td>${c[2]}</td><td>${c[3]}</td>
-          <td class="pct">${pct(c[1], tot)}</td><td class="pct">${pct(c[2], tot)}</td><td class="pct">${pct(c[3], tot)}</td></tr>`;
-      }).join('');
-      const tt = T[1] + T[2] + T[3];
-      return `<h2>Carril ${esc(name)}</h2><div class="tblwrap"><table>
-        <tr><th>Periodo</th><th>1</th><th>2</th><th>3+</th><th>1 %</th><th>2 %</th><th>3+ %</th></tr>
-        ${body || '<tr><td colspan="7" class="hint">Sin registros</td></tr>'}
-        <tr class="tot"><td>TOTAL</td><td>${T[1]}</td><td>${T[2]}</td><td>${T[3]}</td>
-          <td>${pct(T[1], tt)}</td><td>${pct(T[2], tt)}</td><td>${pct(T[3], tt)}</td></tr></table></div>`;
+    const per = new Map();
+    for (const [t, o] of s.ev) {
+      const key = periodStart(t).getTime();
+      if (!per.has(key)) per.set(key, [0, 0, 0, 0]);
+      per.get(key)[o]++;
+    }
+    const T = [0, 0, 0, 0];
+    const body = [...per.entries()].sort((a, b) => a[0] - b[0]).map(([k, c]) => {
+      const tot = c[1] + c[2] + c[3]; T[1] += c[1]; T[2] += c[2]; T[3] += c[3];
+      return `<tr><td>${periodLabel(k)}</td><td>${c[1]}</td><td>${c[2]}</td><td>${c[3]}</td>
+        <td class="pct">${pct(c[1], tot)}</td><td class="pct">${pct(c[2], tot)}</td><td class="pct">${pct(c[3], tot)}</td></tr>`;
     }).join('');
+    const tt = T[1] + T[2] + T[3];
+    $('sTables').innerHTML = `<div class="tblwrap"><table>
+      <tr><th>Periodo</th><th>1</th><th>2</th><th>3+</th><th>1 %</th><th>2 %</th><th>3+ %</th></tr>
+      ${body || '<tr><td colspan="7" class="hint">Sin registros</td></tr>'}
+      <tr class="tot"><td>TOTAL</td><td>${T[1]}</td><td>${T[2]}</td><td>${T[3]}</td>
+        <td>${pct(T[1], tt)}</td><td>${pct(T[2], tt)}</td><td>${pct(T[3], tt)}</td></tr></table></div>`;
     $('sUpState').innerHTML = s.uploaded ? `<span class="ok">✓ Subida ${s.uploadedAt ? hhmm(new Date(s.uploadedAt)) : ''}</span>` : '<span class="warn">Pendiente de subir</span>';
     show('summary');
   }
   function rowsFor(s) {
-    return s.ev.map(([t, l, o]) => {
+    return s.ev.map(([t, o]) => {
       const d = new Date(t);
       return { fecha: ymd(d), hora: hhmm(d) + ':' + pad2(d.getSeconds()), periodo: periodLabel(t),
-               carril: s.lanes[l], ocupantes: o === 3 ? '3+' : String(o), ts: t };
+               ocupantes: o === 3 ? '3+' : String(o), ts: t };
     });
   }
   $('bUpload').addEventListener('click', async () => {
-    saveCfg();
     const s = viewing;
     if (!navigator.onLine) return toast('Sin internet. Los datos siguen guardados; intenta al tener señal.', 3500);
     const btn = $('bUpload'); btn.disabled = true; btn.textContent = 'Subiendo…';
     try {
-      const payload = { sessionId: s.id, ubicacion: s.loc, observador: s.obs, inicio: s.start, fin: s.end, registros: rowsFor(s) };
-      // text/plain evita el "preflight" CORS que Apps Script no soporta
-      const res = await fetch(SHEETS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload) });
-      const j = await res.json();
+      // Antes de mandar datos se confirma que el script de la hoja es la versión correcta
+      const info = await getJSON(SHEETS_URL + '?accion=config');
+      if (!(info.version >= SCRIPT_MIN)) throw new Error('el script de Google Sheets está desactualizado (avisa al coordinador)');
+      const payload = { sessionId: s.id, ubicacion: s.loc, tipo: s.tipo, carril: s.num, observador: s.obs,
+                        inicio: s.start, fin: s.end, registros: rowsFor(s) };
+      // text/plain evita el "preflight" CORS que Apps Script no soporta.
+      // Hasta 150 s: si varios teléfonos suben a la vez, el script los atiende en fila.
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 150000);
+      let j;
+      try {
+        const res = await fetch(SHEETS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: ctl.signal });
+        const txt = await res.text();
+        try { j = JSON.parse(txt); } catch { throw new Error('Google no respondió bien, intenta de nuevo en un minuto'); }
+      } finally { clearTimeout(tm); }
       if (!j.ok) throw new Error(j.error || 'respuesta inválida');
       s.uploaded = true; s.uploadedAt = Date.now(); save(LS.sessions, sessions);
-      toast(`✓ ${j.filas} registros subidos`); renderSummary();
+      toast(`✓ ${j.filas} registros subidos`);
+      // Solo se repinta la pantalla en la que está el observador (nunca se le quita la pantalla de conteo)
+      if (viewing === s && $('summary').classList.contains('on')) renderSummary();
+      else if ($('home').classList.contains('on')) renderHome();
     } catch (e) {
-      toast('✗ Error al subir: ' + e.message + '. Los datos siguen guardados.', 4500);
+      toast('✗ Error al subir: ' + (e.name === 'AbortError' ? 'sin respuesta de Google' : e.message) + '. Los datos siguen guardados.', 5000);
     } finally { btn.disabled = false; btn.textContent = '☁ Subir a Google Sheets'; }
   });
   $('bCsv').addEventListener('click', async () => {
     const s = viewing;
-    const lines = [['sesion', 'ubicacion', 'observador', 'carril', 'fecha', 'hora', 'periodo', 'ocupantes'].join(',')]
-      .concat(rowsFor(s).map(r => [s.id, s.loc, s.obs, r.carril, r.fecha, r.hora, r.periodo, r.ocupantes]
+    const lines = [['sesion', 'ubicacion', 'observador', 'tipo', 'carril', 'fecha', 'hora', 'periodo', 'ocupantes'].join(',')]
+      .concat(rowsFor(s).map(r => [s.id, s.loc, s.obs, s.tipo, s.num, r.fecha, r.hora, r.periodo, r.ocupantes]
         .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')));
-    const name = `ocupacion_${s.loc.replace(/\W+/g, '_')}_${ymd(new Date(s.start))}_${s.id}.csv`;
+    const name = `ocupacion_${s.loc.replace(/\W+/g, '_')}_${s.tipo}_C${s.num}_${ymd(new Date(s.start))}_${s.id}.csv`;
     const file = new File(['﻿' + lines.join('\n')], name, { type: 'text/csv' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
@@ -370,6 +423,8 @@
   // ---------- Arranque ----------
   renderHome();
   if (active) startCounting();   // si la app se cerró a medio conteo, regresa directo a contar
+  refreshLanes();
+  window.addEventListener('online', refreshLanes);
   if ('serviceWorker' in navigator) {
     // Cuando se publica una versión nueva, se aplica sola (nunca a media cuenta: solo si no hay conteo en curso)
     const hadSW = !!navigator.serviceWorker.controller;
