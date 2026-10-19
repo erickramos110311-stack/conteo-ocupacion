@@ -1,23 +1,23 @@
 /**
- * Receptor de la app "Conteo de Ocupación Vehicular" (versión 3).
+ * Receptor de la app "Conteo de Ocupación Vehicular" (versión 4).
  *
  * Pestañas que maneja:
  * - "Puntos":     los puntos de aforo. Cada punto tiene dos avenidas y cada avenida sus carriles.
  *                 Aquí se decide qué carriles son Express y cuáles Normal. La editas tú.
- * - "Registros":  un renglón por auto (dato crudo). No editar a mano.
+ * - "Registros":  un renglón por carril y periodo de 15 min con los totales de 1, 2 y 3+ ocupantes.
+ *                 (El detalle de cada auto se queda en el teléfono y en su respaldo CSV.) No editar a mano.
  * - "Por carril": cada carril por separado, en periodos de 15 min, separado en mañana y tarde.
  * - "Resumen":    carriles del mismo tipo sumados (Express, Normal) con porcentajes, como en el estudio.
  *
  * Volver a subir la misma sesión NO duplica: reemplaza sus renglones.
  */
-const VERSION_SCRIPT = 3;
+const VERSION_SCRIPT = 4;
 const HOJA_PUNTOS = 'Puntos';
 const HOJA_REG = 'Registros';
 const HOJA_CARRIL = 'Por carril';
 const HOJA_RES = 'Resumen';
-const ENCABEZADOS = ['Sesion', 'Punto', 'Avenida', 'Lugar', 'Observador', 'Tipo', 'Carril', 'Fecha', 'Hora', 'Periodo', 'Ocupantes', 'Timestamp'];
+const ENCABEZADOS = ['Sesion', 'Punto', 'Avenida', 'Lugar', 'Observador', 'Tipo', 'Carril', 'Fecha', 'Periodo', '1 ocupante', '2 ocupantes', '3 o mas ocupantes', 'Subido'];
 const ENC_PUNTOS = ['Punto', 'Avenida', 'Lugar', 'Carriles Express', 'Carriles Normales'];
-const ENCABEZADOS_V2 = ['Sesion', 'Ubicacion', 'Observador', 'Tipo', 'Carril', 'Fecha', 'Hora', 'Periodo', 'Ocupantes', 'Timestamp'];
 const PUNTOS_INICIALES = [
   [1, 'AV. CONSTITUCIÓN', 'Puente vehicular Corregidora', '1,2,3', '4,5,6'],
   [1, 'AV. MORONES PRIETO', 'Puente vehicular Corregidora', '1,2,3', '4,5,6'],
@@ -108,8 +108,10 @@ function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
     const d = JSON.parse(e.postData.contents);
-    const avenida = String(d.avenida || d.ubicacion || '').trim().toUpperCase(); // "ubicacion": app versión anterior
-    if (!d.sessionId || !avenida || !d.carril || !Array.isArray(d.registros)) {
+    const avenida = String(d.avenida || d.ubicacion || '').trim().toUpperCase(); // "ubicacion": app versión 2
+    // La app manda totales por periodo; las versiones anteriores mandan un renglón por auto y aquí se suman
+    const totales = Array.isArray(d.totales) ? d.totales : Array.isArray(d.registros) ? sumarRegistros(d.registros) : null;
+    if (!d.sessionId || !avenida || !d.carril || !totales) {
       throw new Error('Datos incompletos: actualiza la app (ábrela con internet)');
     }
     if (!lock.tryLock(120000)) throw new Error('La hoja está ocupada con otras subidas. Espera 1 minuto y vuelve a intentar');
@@ -117,14 +119,11 @@ function doPost(e) {
     const reg = hojaRegistros(ss);
     const sid = String(d.sessionId);
 
-    // Re-subida de la misma sesión (se perdió la respuesta, o se tocó "Subir" otra vez)
+    // Re-subida de la misma sesión (se perdió la respuesta, o se tocó "Subir" otra vez): se reemplazan sus renglones
     const last = reg.getLastRow();
     if (last > 1) {
       const ids = reg.getRange(2, 1, last - 1, 1).getValues().map(r => String(r[0]));
-      const ya = ids.filter(x => x === sid).length;
-      if (ya && ya === d.registros.length) return json({ ok: true, version: VERSION_SCRIPT, filas: ya, repetida: true });
-      // Si cambió, se borran solo los renglones de esta sesión (de abajo hacia arriba), nunca toda la hoja
-      for (let i = ids.length - 1; i >= 0; i--) {
+      for (let i = ids.length - 1; i >= 0; i--) {   // de abajo hacia arriba, solo los de esta sesión
         if (ids[i] !== sid) continue;
         let j = i;
         while (j > 0 && ids[j - 1] === sid) j--;
@@ -135,13 +134,16 @@ function doPost(e) {
 
     const punto = String(d.punto || '').trim(), carril = String(d.carril).trim();
     const tipo = normalizarTipo(d.tipo) || mapaTipos(ss)[[punto, avenida, carril].join('|')] || '';
-    const filas = d.registros.map(r => [sid, punto, avenida, String(d.lugar || ''), d.observador || '', tipo, carril,
-      r.fecha, r.hora, r.periodo, r.ocupantes, new Date(r.ts)]);
+    const ahora = new Date();
+    const n = v => Math.max(0, Math.round(Number(v) || 0));
+    const filas = totales.filter(t => t && t.fecha && t.periodo).map(t => [sid, punto, avenida, String(d.lugar || ''), d.observador || '',
+      tipo, carril, String(t.fecha), String(t.periodo), n(t.n1), n(t.n2), n(t.n3), ahora]);
+    const autos = filas.reduce((a, f) => a + f[9] + f[10] + f[11], 0);
     if (filas.length) {
       const inicio = reg.getLastRow() + 1;
-      // Punto, Carril, Fecha, Hora, Periodo y Ocupantes como texto para que Sheets no los convierta
+      // Punto, Carril, Fecha y Periodo como texto para que Sheets no los convierta
       reg.getRange(inicio, 2, filas.length, 1).setNumberFormat('@');
-      reg.getRange(inicio, 7, filas.length, 5).setNumberFormat('@');
+      reg.getRange(inicio, 7, filas.length, 3).setNumberFormat('@');
       reg.getRange(inicio, 1, filas.length, ENCABEZADOS.length).setValues(filas);
       SpreadsheetApp.flush();
     }
@@ -150,7 +152,8 @@ function doPost(e) {
     // Recalcular resúmenes solo si nadie más está usando la hoja. Si alguien sí, esa subida
     // recalculará al terminar e incluirá estos renglones (o usa el menú Conteo → Recalcular resumen).
     if (lock.tryLock(0)) construirResumen(ss);
-    return json({ ok: true, version: VERSION_SCRIPT, filas: filas.length });
+    // Las apps anteriores muestran "filas" como número de autos subidos
+    return json({ ok: true, version: VERSION_SCRIPT, filas: Array.isArray(d.totales) ? filas.length : autos, autos: autos });
   } catch (err) {
     return json({ ok: false, version: VERSION_SCRIPT, error: String(err && err.message || err) });
   } finally {
@@ -165,26 +168,35 @@ function onOpen() {
 function recalcularResumen() {
   const lock = LockService.getScriptLock();
   lock.waitLock(120000);
-  try { construirResumen(); } finally { lock.releaseLock(); }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  try { hojaRegistros(ss); construirResumen(ss); } finally { lock.releaseLock(); } // convierte Registros si viene de una versión anterior
   SpreadsheetApp.getActiveSpreadsheet().toast('Resumen recalculado');
 }
 
-/** Hoja Registros con los encabezados de esta versión. Si existe con otro formato, la guarda aparte. */
+/** Un renglón por auto → totales por fecha y periodo: [{fecha, periodo, n1, n2, n3}] */
+function sumarRegistros(registros) {
+  const g = {}, out = [];
+  registros.forEach(r => {
+    if (!r || !r.fecha || !r.periodo) return;
+    const k = r.fecha + '|' + r.periodo;
+    if (!g[k]) { g[k] = { fecha: String(r.fecha), periodo: String(r.periodo), n1: 0, n2: 0, n3: 0 }; out.push(g[k]); }
+    const o = String(r.ocupantes);
+    if (o === '1') g[k].n1++; else if (o === '2') g[k].n2++; else g[k].n3++;
+  });
+  return out;
+}
+
+/** Hoja Registros con los encabezados de esta versión. Si existe con otro formato, la convierte o la guarda aparte. */
 function hojaRegistros(ss) {
   let reg = ss.getSheetByName(HOJA_REG);
   if (reg && reg.getLastRow() > 0) {
     // Solo se comparan las columnas de la app: notas o fórmulas a la derecha no importan
-    const enc = reg.getRange(1, 1, 1, ENCABEZADOS.length).getDisplayValues()[0];
-    if (enc.join('|') !== ENCABEZADOS.join('|')) {
-      if (enc.slice(0, ENCABEZADOS_V2.length).join('|') === ENCABEZADOS_V2.join('|')) {
-        // Versión 2 → 3 sin mover nada: se insertan las columnas Punto (B) y Lugar (D); lo ya subido sigue en el Resumen
-        reg.insertColumnBefore(2);
-        reg.insertColumnAfter(3);
-        reg.getRange(1, 1, 1, ENCABEZADOS.length).setValues([ENCABEZADOS]).setFontWeight('bold');
+    const enc = reg.getRange(1, 1, 1, Math.max(reg.getLastColumn(), ENCABEZADOS.length)).getDisplayValues()[0].map(x => String(x).trim());
+    if (enc.slice(0, ENCABEZADOS.length).join('|') !== ENCABEZADOS.join('|')) {
+      if (reg.getLastRow() > 1 && enc.indexOf('Ocupantes') >= 0 && enc.indexOf('Sesion') === 0) {
+        reg = convertirPorAuto(ss, reg, enc);   // versiones 2 y 3 (un renglón por auto)
       } else if (reg.getLastRow() > 1) {
-        let nombre = HOJA_REG + ' (formato anterior)', i = 2;
-        while (ss.getSheetByName(nombre)) nombre = HOJA_REG + ' (formato anterior ' + (i++) + ')';
-        reg.setName(nombre);
+        reg.setName(nombreLibre(ss, HOJA_REG + ' (formato anterior)'));
         reg = null;
       } else {
         reg.clear(); // solo tenía encabezados viejos
@@ -197,6 +209,44 @@ function hojaRegistros(ss) {
     reg.setFrozenRows(1);
   }
   return reg;
+}
+
+function nombreLibre(ss, base) {
+  let nombre = base, i = 2;
+  while (ss.getSheetByName(nombre)) nombre = base.replace(/\)$/, ' ' + (i++) + ')');
+  return nombre;
+}
+
+/** Registros de las versiones 2 y 3 (un renglón por auto): se suman por periodo en una hoja nueva y la vieja se guarda aparte */
+function convertirPorAuto(ss, vieja, enc) {
+  const tz = ss.getSpreadsheetTimeZone();
+  const txt = v => v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
+  const col = nombre => enc.indexOf(nombre);
+  const c = { s: col('Sesion'), p: col('Punto'), a: col('Avenida') >= 0 ? col('Avenida') : col('Ubicacion'), l: col('Lugar'),
+              o: col('Observador'), t: col('Tipo'), k: col('Carril'), f: col('Fecha'), pe: col('Periodo'), oc: col('Ocupantes') };
+  const get = (r, i) => i >= 0 ? txt(r[i]) : '';
+  const grupos = {}, filas = [];
+  vieja.getRange(2, 1, vieja.getLastRow() - 1, enc.length).getValues().forEach(r => {
+    const sid = get(r, c.s), fecha = get(r, c.f), periodo = get(r, c.pe);
+    if (!sid || !periodo) return;
+    const k = [sid, fecha, periodo].join('|');
+    if (!grupos[k]) {
+      grupos[k] = [sid, get(r, c.p), get(r, c.a).toUpperCase(), get(r, c.l), get(r, c.o), get(r, c.t), get(r, c.k), fecha, periodo, 0, 0, 0, new Date()];
+      filas.push(grupos[k]);
+    }
+    const o = get(r, c.oc);
+    grupos[k][o === '1' ? 9 : o === '2' ? 10 : 11]++;
+  });
+  vieja.setName(nombreLibre(ss, HOJA_REG + ' (por auto, versión anterior)'));
+  const nueva = ss.insertSheet(HOJA_REG);
+  nueva.getRange(1, 1, 1, ENCABEZADOS.length).setValues([ENCABEZADOS]).setFontWeight('bold');
+  nueva.setFrozenRows(1);
+  if (filas.length) {
+    nueva.getRange(2, 2, filas.length, 1).setNumberFormat('@');
+    nueva.getRange(2, 7, filas.length, 3).setNumberFormat('@');
+    nueva.getRange(2, 1, filas.length, ENCABEZADOS.length).setValues(filas);
+  }
+  return nueva;
 }
 
 // ---------- Resúmenes ----------
@@ -229,27 +279,29 @@ function construirResumen(ss, solo) {
   const carril = {}, tipo = {}; // clave -> { titulo, fecha, punto, periodos: { 'HH:MM - HH:MM': [1, 2, 3+] } }
   const fechas = {}, puntos = {};
   config.forEach(p => { puntos[p.num] = true; });
-  if (reg && reg.getLastRow() > 1) {
-    // Columnas B..K: Punto, Avenida, Lugar, Observador, Tipo, Carril, Fecha, Hora, Periodo, Ocupantes
-    reg.getRange(2, 2, reg.getLastRow() - 1, 10).getValues().forEach(r => {
+  const formatoOk = reg && reg.getLastRow() > 0 &&
+    reg.getRange(1, 1, 1, ENCABEZADOS.length).getDisplayValues()[0].map(x => String(x).trim()).join('|') === ENCABEZADOS.join('|');
+  if (formatoOk && reg.getLastRow() > 1) {
+    // Columnas B..L: Punto, Avenida, Lugar, Observador, Tipo, Carril, Fecha, Periodo, 1 ocupante, 2 ocupantes, 3+
+    reg.getRange(2, 2, reg.getLastRow() - 1, 11).getValues().forEach(r => {
       const punto = txt(r[0]), avenida = txt(r[1]).toUpperCase(), lugar = txt(r[2]), num = txt(r[5]),
-            fecha = txt(r[6]), periodo = txt(r[8]), occ = txt(r[9]);
+            fecha = txt(r[6]), periodo = txt(r[7]), cuenta = [Number(r[8]) || 0, Number(r[9]) || 0, Number(r[10]) || 0];
       if (!periodo || !num) return;
       fechas[fecha] = true; puntos[punto] = true;
       const t = tipos[[punto, avenida, num].join('|')] || normalizarTipo(r[4]) || 'Sin tipo';
       const turno = parseInt(periodo, 10) < 12 ? 'MAÑANA' : 'TARDE';
-      const i = occ === '1' ? 0 : occ === '2' ? 1 : 2;
       const lugarTxt = (punto ? 'PUNTO ' + punto + ' · ' : '') + avenida + (lugar ? ' (' + lugar + ')' : '');
       const base = [pad(punto), avenida, fecha, turno === 'MAÑANA' ? 0 : 1];
       const meta = { fecha: fecha, punto: punto };
       sumar(carril, base.concat([pad(num), t]).join('|'),
-        [lugarTxt, fecha, turno, 'CARRIL ' + num + ' (' + t.toUpperCase() + ')'].join(' · '), meta, periodo, i);
+        [lugarTxt, fecha, turno, 'CARRIL ' + num + ' (' + t.toUpperCase() + ')'].join(' · '), meta, periodo, cuenta);
       sumar(tipo, base.concat([t]).join('|'),
-        [lugarTxt, fecha, turno, 'CARRILES ' + t.toUpperCase()].join(' · '), meta, periodo, i);
+        [lugarTxt, fecha, turno, 'CARRILES ' + t.toUpperCase()].join(' · '), meta, periodo, cuenta);
     });
   }
   const opciones = {
     dias: [TODOS_DIAS].concat(Object.keys(fechas).sort()),
+    aviso: reg && reg.getLastRow() > 1 && !formatoOk ? 'Registros tiene el formato anterior: usa el menú Conteo → Recalcular resumen' : '',
     puntos: [TODOS_PUNTOS].concat(Object.keys(puntos).sort((a, b) => (Number(a) || 999) - (Number(b) || 999)).map(etiquetaPunto)),
   };
   if (!solo || solo === HOJA_CARRIL) escribirTablas(ss, HOJA_CARRIL, carril, opciones);
@@ -258,10 +310,10 @@ function construirResumen(ss, solo) {
 
 const etiquetaPunto = p => p ? 'Punto ' + p : 'Sin punto';
 
-function sumar(grupos, clave, titulo, meta, periodo, i) {
+function sumar(grupos, clave, titulo, meta, periodo, cuenta) {
   const g = grupos[clave] = grupos[clave] || { titulo: titulo, fecha: meta.fecha, punto: meta.punto, periodos: {} };
   const c = g.periodos[periodo] = g.periodos[periodo] || [0, 0, 0];
-  c[i]++;
+  c[0] += cuenta[0]; c[1] += cuenta[1]; c[2] += cuenta[2];
 }
 
 /** Renglón 1 con los selectores; devuelve lo que está elegido */
@@ -299,6 +351,7 @@ function escribirTablas(ss, nombre, grupos, opciones) {
   });
   const filtro = (sel.dia === TODOS_DIAS ? 'todos los días' : 'día ' + sel.dia) + ' · ' + (sel.punto === TODOS_PUNTOS ? 'todos los puntos' : sel.punto.toLowerCase());
   const estado = t => hoja.getRange(2, 1).setValue(t).setFontColor('#666666').setFontWeight('normal');
+  if (opciones.aviso) { estado(opciones.aviso).setFontColor('#b45309'); return; }
   if (!claves.length) { estado('No hay datos para ' + filtro); return; }
 
   // Valores y formato de toda la pestaña en arreglos: se escriben con pocas llamadas (rápido aunque haya muchas tablas)
@@ -313,10 +366,12 @@ function escribirTablas(ss, nombre, grupos, opciones) {
       const c = g.periodos[p], tot = c[0] + c[1] + c[2];
       t[0] += c[0]; t[1] += c[1]; t[2] += c[2];
       const ab = p.split(' - ');
-      fila('datos', [ab[0], ab[1] || '', c[0], c[1], c[2], c[0] / tot, c[1] / tot, c[2] / tot]);
+      const pc = x => tot ? x / tot : 0;
+      fila('datos', [ab[0], ab[1] || '', c[0], c[1], c[2], pc(c[0]), pc(c[1]), pc(c[2])]);
     });
     const tt = t[0] + t[1] + t[2];
-    fila('total', ['TOTAL', '', t[0], t[1], t[2], t[0] / tt, t[1] / tt, t[2] / tt]);
+    const pt = x => tt ? x / tt : 0;
+    fila('total', ['TOTAL', '', t[0], t[1], t[2], pt(t[0]), pt(t[1]), pt(t[2])]);
     fila('vacia', ['', '', '', '', '', '', '', '']);
   });
 

@@ -63,7 +63,7 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
 
 ## Qué aparece en Google Sheets
 - **Puntos**: los 5 puntos, sus avenidas y qué carriles son Express o Normales (la editas tú).
-- **Registros**: un renglón por auto (sesión, punto, avenida, lugar, observador, tipo, carril, fecha, hora, periodo, ocupantes). No se edita a mano.
+- **Registros**: un renglón por carril y periodo de 15 min con los totales de 1, 2 y 3+ ocupantes (sesión, punto, avenida, lugar, observador, tipo, carril, fecha, periodo). Un día completo del estudio (5 puntos × 2 avenidas × 6 carriles × 2 turnos) son unos 720 renglones. El detalle de cada toque se queda en el teléfono y en su respaldo CSV. No se edita a mano.
 - **Por carril**: cada carril de cada punto y avenida por separado, en periodos de 15 min, separado en MAÑANA y TARDE.
 - **Resumen**: por punto y avenida, los carriles del mismo tipo sumados (CARRILES EXPRESS, CARRILES NORMAL) con 1 / 2 / 3+ ocupantes, porcentajes y TOTAL por turno, como en el estudio.
 
