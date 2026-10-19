@@ -42,7 +42,9 @@
   .opts.one { grid-template-columns: 1fr; }
   .opts.three { grid-template-columns: 1fr 1fr 1fr; }
   .opts .hint { grid-column: 1 / -1; margin: 4px 0; }
-  .opt.big { font-size: 30px; font-weight: 800; padding: 12px 0; }
+  .opt.big { font-size: 30px; font-weight: 800; padding: 10px 0 8px; line-height: 1.1; }
+  .opt.big small { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .lane-group { grid-column: 1 / -1; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text); margin: 6px 0 -2px; }
   #puntoOpts .opt { display: flex; align-items: center; gap: 14px; text-align: left; padding: 10px 14px; }
   #puntoOpts .pn { font-size: 28px; font-weight: 800; min-width: 28px; text-align: center; }
   #puntoOpts .pl { font-size: 13px; font-weight: 500; line-height: 1.3; }
@@ -203,7 +205,7 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const aveCorta = a => String(a || '').replace(/^AV\.?\s*/i, '');
   // Sesiones de versiones anteriores no tienen punto/avenida: se muestran con su ubicación
-  const laneName = s => s.avenida ? `Punto ${s.punto} · ${aveCorta(s.avenida)} · Carril ${s.num}` : `${s.loc || ''} · ${s.tipo} · Carril ${s.num}`;
+  const laneName = s => s.avenida ? `Punto ${s.punto} · ${aveCorta(s.avenida)} · Carril ${s.num} ${s.tipo}` : `${s.loc || ''} · ${s.tipo} · Carril ${s.num}`;
   let toastT;
   function toast(msg, ms = 2200) { const el = $('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms); }
   function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
@@ -253,7 +255,9 @@
       ? pt.avenidas.map(a => `<button class="opt ${a.avenida === cfg.avenida ? 'on' : ''}" data-ave="${esc(a.avenida)}">${esc(aveCorta(a.avenida))}<small>${esc(a.lugar)}</small></button>`).join('')
       : '<p class="hint">Primero elige el punto.</p>';
     $('laneOpts').innerHTML = av
-      ? av.carriles.map(c => `<button class="opt big ${c.num === cfg.carril ? 'on' : ''}" data-carril="${esc(c.num)}">${esc(c.num)}</button>`).join('')
+      // Agrupados por tipo: primero los Express, luego los Normales, cada botón dice su tipo
+      ? [...new Set(av.carriles.map(c => c.tipo))].map(t => `<div class="lane-group">Carriles ${esc(t === 'Normal' ? 'Normales' : t)}</div>` +
+          av.carriles.filter(c => c.tipo === t).map(c => `<button class="opt big ${c.num === cfg.carril ? 'on' : ''}" data-carril="${esc(c.num)}">${esc(c.num)}<small>${esc(c.tipo)}</small></button>`).join('')).join('')
       : '<p class="hint">Primero elige la avenida.</p>';
     $('fObs').value = cfg.obs || '';
     updateStart();
@@ -271,7 +275,7 @@
   function updateStart() {
     const b = $('bStart'), { ca } = seleccion();
     b.disabled = !(ca && (cfg.obs || '').trim());
-    b.textContent = ca ? `▶ Empezar: Punto ${cfg.punto} · ${aveCorta(cfg.avenida)} · Carril ${cfg.carril}` : '▶ Empezar conteo';
+    b.textContent = ca ? `▶ Empezar: Punto ${cfg.punto} · ${aveCorta(cfg.avenida)} · Carril ${cfg.carril} ${ca.tipo}` : '▶ Empezar conteo';
   }
   $('puntoOpts').addEventListener('click', e => {
     const b = e.target.closest('[data-punto]'); if (!b) return;
@@ -376,7 +380,7 @@
   function renderSummary() {
     const s = viewing, d = new Date(s.start);
     $('sTitle').textContent = s.avenida ? `Punto ${s.punto} · ${aveCorta(s.avenida)}` : (s.loc || '');
-    $('sLane').textContent = `Carril ${s.num}`;
+    $('sLane').textContent = `Carril ${s.num} · ${s.tipo}`;
     $('sMeta').textContent = `${s.lugar ? s.lugar + ' · ' : ''}${ymd(d)} · ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.obs || 'sin observador'} · ${s.ev.length} autos`;
     const per = new Map();
     for (const [t, o] of s.ev) {
