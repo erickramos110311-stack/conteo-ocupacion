@@ -19,15 +19,17 @@ App para iPhone y Android para estudios de ocupación vehicular. **Cada observad
 4. Autoriza los permisos y copia la **URL que termina en `/exec`**.
 5. Esa URL va fija dentro de la app, en la constante `SHEETS_URL` de `app/index.html`. Los encuestadores no la ven ni la pueden cambiar. Si algún día usas otra hoja, cambia esa línea y publica una versión nueva (ver abajo).
 
-### La lista de carriles (pestaña "Carriles")
-La pestaña **Carriles** de la hoja es la lista que ven los observadores en la app. Se crea sola la primera vez con AV MORONES PRIETO (Express 1 y 2, Normal 4 y 5). Para agregar otra avenida o carril, escribe un renglón nuevo:
+### Los puntos de aforo (pestaña "Puntos")
+La pestaña **Puntos** de la hoja es la lista que ven los observadores. Se crea sola con los 5 puntos del estudio. Cada punto tiene dos renglones, uno por avenida:
 
-| Ubicacion | Tipo | Carril |
-|---|---|---|
-| AV CONSTITUCION | Express | 1 |
+| Punto | Avenida | Lugar | Carriles Express | Carriles Normales |
+|---|---|---|---|---|
+| 1 | AV. CONSTITUCIÓN | Puente vehicular Corregidora | 1,2,3 | 4,5,6 |
+| 1 | AV. MORONES PRIETO | Puente vehicular Corregidora | 1,2,3 | 4,5,6 |
 
-- **Tipo**: `Express` o `Normal`. Los carriles del mismo tipo se suman en el Resumen.
-- Escribe la ubicación siempre igual en todos sus renglones.
+- El observador solo elige **punto → avenida → carril** (los números que aparecen en las dos últimas columnas). Nunca ve "Express" ni "Normal".
+- Las columnas **Carriles Express / Carriles Normales** deciden cómo se suman en el Resumen. Si te equivocas, corrígelas y usa **Conteo → Recalcular resumen**: los datos ya subidos se reacomodan solos.
+- Si un punto tiene menos carriles, bórralos de la lista (ej. Express `1,2` y Normales `4,5`).
 - Los teléfonos descargan la lista cada vez que abren la app con internet.
 
 ### Si cambias `Code.gs` después
@@ -51,7 +53,7 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
 Ábrela una vez con internet. A partir de ahí abre y cuenta sin señal.
 
 ## Uso en campo
-1. Elige la **ubicación**, **tu carril** (ej. Express · Carril 2) y escribe **tu nombre**. El botón dice exactamente qué vas a contar: **▶ Empezar: Express · Carril 2**.
+1. Toca **el punto** (1 al 5), **la avenida** (Constitución o Morones Prieto), **tu carril** (1 al 6) y escribe **tu nombre**. El botón dice exactamente qué vas a contar: **▶ Empezar: Punto 3 · MORONES PRIETO · Carril 6**.
 2. Toca **1**, **2** o **3+** cada vez que pasa un auto. El botón responde al tocarlo, sin esperar a soltar el dedo, y acepta toques con dos dedos a la vez.
 3. **Deshacer** borra el último toque.
 4. La pantalla se mantiene encendida. Si la app se cierra o se acaba la batería, al abrirla regresa al conteo con todo lo guardado.
@@ -60,10 +62,10 @@ Para actualizar la app: edita los archivos de `app/`, **sube el número de `VERS
    - **Exportar CSV** sirve de respaldo (WhatsApp, correo, Drive).
 
 ## Qué aparece en Google Sheets
-- **Carriles**: la lista de ubicaciones y carriles (la editas tú).
-- **Registros**: un renglón por auto (sesión, ubicación, observador, tipo, carril, fecha, hora, periodo, ocupantes). No se edita a mano.
-- **Por carril**: cada carril por separado, en periodos de 15 min, separado en MAÑANA y TARDE.
-- **Resumen**: los carriles del mismo tipo sumados (CARRILES EXPRESS, CARRILES NORMAL) con 1 / 2 / 3+ ocupantes, porcentajes y TOTAL por turno, como en el estudio.
+- **Puntos**: los 5 puntos, sus avenidas y qué carriles son Express o Normales (la editas tú).
+- **Registros**: un renglón por auto (sesión, punto, avenida, lugar, observador, tipo, carril, fecha, hora, periodo, ocupantes). No se edita a mano.
+- **Por carril**: cada carril de cada punto y avenida por separado, en periodos de 15 min, separado en MAÑANA y TARDE.
+- **Resumen**: por punto y avenida, los carriles del mismo tipo sumados (CARRILES EXPRESS, CARRILES NORMAL) con 1 / 2 / 3+ ocupantes, porcentajes y TOTAL por turno, como en el estudio.
 
 Las pestañas Por carril y Resumen se recalculan con cada subida y juntan los datos de todos los teléfonos.
 

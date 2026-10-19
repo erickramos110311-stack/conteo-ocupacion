@@ -40,6 +40,12 @@
   .row > * { flex: 1; }
   .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .opts.one { grid-template-columns: 1fr; }
+  .opts.three { grid-template-columns: 1fr 1fr 1fr; }
+  .opts .hint { grid-column: 1 / -1; margin: 4px 0; }
+  .opt.big { font-size: 30px; font-weight: 800; padding: 12px 0; }
+  #puntoOpts .opt { display: flex; align-items: center; gap: 14px; text-align: left; padding: 10px 14px; }
+  #puntoOpts .pn { font-size: 28px; font-weight: 800; min-width: 28px; text-align: center; }
+  #puntoOpts .pl { font-size: 13px; font-weight: 500; line-height: 1.3; }
   .opt { padding: 14px 10px; border-radius: 12px; background: var(--panel); border: 2px solid var(--line); text-align: center; font-weight: 600; }
   .opt small { display: block; font-weight: 500; color: var(--muted); font-size: 12px; }
   .opt.on { background: var(--accent); color: #111; border-color: var(--accent); }
@@ -92,13 +98,16 @@
   <div class="scroll">
     <h1>🚗 Conteo de ocupación vehicular</h1>
 
-    <label>1. Ubicación</label>
-    <div class="opts one" id="locOpts"></div>
+    <label>1. ¿En qué punto estás?</label>
+    <div class="opts one" id="puntoOpts"></div>
 
-    <label>2. Tu carril</label>
-    <div class="opts" id="laneOpts"></div>
+    <label>2. ¿En qué avenida?</label>
+    <div class="opts" id="aveOpts"></div>
 
-    <label>3. Tu nombre</label>
+    <label>3. ¿En qué carril?</label>
+    <div class="opts three" id="laneOpts"></div>
+
+    <label>4. Tu nombre</label>
     <input id="fObs" placeholder="Nombre del observador" autocomplete="off" autocapitalize="words">
 
     <p class="hint" id="cfgState"></p>
@@ -144,23 +153,30 @@
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
-  const LS = { cfg: 'ocv_cfg', lanes: 'ocv_lanes', sessions: 'ocv_sessions', active: 'ocv_active' };
+  const LS = { cfg: 'ocv_cfg', puntos: 'ocv_puntos', sessions: 'ocv_sessions', active: 'ocv_active' };
   const OCC = [ {v:1, big:'1', lbl:'ocupante'}, {v:2, big:'2', lbl:'ocupantes'}, {v:3, big:'3+', lbl:'ocupantes'} ];
   const PERIOD_MIN = 15;
   // Destino fijo de los datos (Apps Script de la hoja del estudio). Los encuestadores no lo pueden cambiar.
   const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbw3dCka9E4nWu-3ihOS40vWtV2flRqso8GTqflzbo8gcYTyn_yn7xzbf1KQzWvTfmEG-A/exec';
-  const SCRIPT_MIN = 2;  // versión mínima de Code.gs que entiende esta app
-  // Lista de respaldo si la app nunca ha podido descargar la pestaña "Carriles" de la hoja
-  const DEFAULT_LOCS = [{ nombre: 'AV MORONES PRIETO', carriles: [
-    { tipo: 'Express', num: '1' }, { tipo: 'Express', num: '2' }, { tipo: 'Normal', num: '4' }, { tipo: 'Normal', num: '5' } ] }];
+  const SCRIPT_MIN = 3;  // versión mínima de Code.gs que entiende esta app
+  // Lista de respaldo si la app nunca ha podido descargar la pestaña "Puntos" de la hoja (igual a la que crea el script)
+  const C6 = ['1', '2', '3', '4', '5', '6'].map(n => ({ num: n, tipo: n <= '3' ? 'Express' : 'Normal' }));
+  const P = (num, c, m) => ({ num, avenidas: [{ avenida: 'AV. CONSTITUCIÓN', lugar: c, carriles: C6 }, { avenida: 'AV. MORONES PRIETO', lugar: m, carriles: C6 }] });
+  const DEFAULT_PUNTOS = [
+    P('1', 'Puente vehicular Corregidora', 'Puente vehicular Corregidora'),
+    P('2', 'Puente verde', 'Puente peatonal frente a Parque España'),
+    P('3', 'Puente peatonal a la altura de calle Morelos', 'Puente peatonal adelante de Pedro Martínez'),
+    P('4', 'Puente peatonal del Papa', 'Puente peatonal del Papa'),
+    P('5', 'Puente peatonal a la altura de calle Degollado', 'Puente peatonal a la altura de calle Loma Larga'),
+  ];
 
   // ---------- Almacenamiento ----------
   const load = (k, d) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('⚠ No se pudo guardar: ' + e.message); } };
 
-  let cfg = load(LS.cfg, {});                // {obs, loc, lane: 'Express|1'}
-  let lanesCfg = load(LS.lanes, null);       // {ubicaciones, at}
-  let sessions = load(LS.sessions, []);      // sesiones terminadas: {id, loc, tipo, num, obs, start, end, ev:[[t, occ]], uploaded}
+  let cfg = load(LS.cfg, {});                // {obs, punto, avenida, carril}
+  let puntosCfg = load(LS.puntos, null);     // {puntos, at}
+  let sessions = load(LS.sessions, []);      // sesiones terminadas: {id, punto, avenida, lugar, num, tipo, obs, start, end, ev:[[t, occ]], uploaded}
   let active = load(LS.active, null);        // sesión en curso (mismo formato, sin end)
   let viewing = null;                        // sesión mostrada en el resumen
 
@@ -185,7 +201,9 @@
   const periodLabel = t => { const a = periodStart(t); const b = new Date(a.getTime() + PERIOD_MIN * 60000); return hhmm(a) + ' - ' + hhmm(b); };
   const pct = (n, tot) => tot ? (100 * n / tot).toFixed(1) + ' %' : '–';
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const laneName = s => `${s.tipo} · Carril ${s.num}`;
+  const aveCorta = a => String(a || '').replace(/^AV\.?\s*/i, '');
+  // Sesiones de versiones anteriores no tienen punto/avenida: se muestran con su ubicación
+  const laneName = s => s.avenida ? `Punto ${s.punto} · ${aveCorta(s.avenida)} · Carril ${s.num}` : `${s.loc || ''} · ${s.tipo} · Carril ${s.num}`;
   let toastT;
   function toast(msg, ms = 2200) { const el = $('toast'); el.textContent = msg; el.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => el.style.display = 'none', ms); }
   function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
@@ -194,36 +212,49 @@
     try { const r = await fetch(url, { signal: ctl.signal }); return await r.json(); } finally { clearTimeout(t); }
   }
 
-  // ---------- Lista de ubicaciones y carriles (pestaña "Carriles" de la hoja) ----------
-  const locs = () => (lanesCfg && lanesCfg.ubicaciones && lanesCfg.ubicaciones.length) ? lanesCfg.ubicaciones : DEFAULT_LOCS;
-  async function refreshLanes() {
+  // ---------- Lista de puntos (pestaña "Puntos" de la hoja) ----------
+  const puntos = () => (puntosCfg && puntosCfg.puntos && puntosCfg.puntos.length) ? puntosCfg.puntos : DEFAULT_PUNTOS;
+  async function refreshPuntos() {
     if (!navigator.onLine) return renderCfgState();
     try {
       const j = await getJSON(SHEETS_URL + '?accion=config');
-      if (j.ok && Array.isArray(j.ubicaciones) && j.ubicaciones.length) {
-        lanesCfg = { ubicaciones: j.ubicaciones, at: Date.now() }; save(LS.lanes, lanesCfg);
+      if (j.ok && Array.isArray(j.puntos) && j.puntos.length) {
+        puntosCfg = { puntos: j.puntos, at: Date.now() }; save(LS.puntos, puntosCfg);
         if (!active && $('home').classList.contains('on')) renderHome();
       }
     } catch {}
     renderCfgState();
   }
   function renderCfgState() {
-    $('cfgState').textContent = lanesCfg && lanesCfg.at
-      ? `Lista de carriles actualizada ${ymd(new Date(lanesCfg.at))} ${hhmm(new Date(lanesCfg.at))}`
-      : 'Lista de carriles de respaldo. Abre la app con internet para actualizarla.';
+    $('cfgState').textContent = puntosCfg && puntosCfg.at
+      ? `Lista de puntos actualizada ${ymd(new Date(puntosCfg.at))} ${hhmm(new Date(puntosCfg.at))}`
+      : 'Lista de puntos de respaldo. Abre la app con internet para actualizarla.';
+  }
+  // Selección actual (se valida contra la lista: si el coordinador cambia la hoja, se limpia lo que ya no existe)
+  function seleccion() {
+    const pt = puntos().find(p => p.num === cfg.punto);
+    const av = pt && pt.avenidas.find(a => a.avenida === cfg.avenida);
+    const ca = av && av.carriles.find(c => c.num === cfg.carril);
+    if (!pt) cfg.punto = '';
+    if (!av) cfg.avenida = '';
+    if (!ca) cfg.carril = '';
+    return { pt, av, ca };
   }
 
   // ---------- Inicio ----------
   function renderHome() {
-    const L = locs();
-    if (!L.some(l => l.nombre === cfg.loc)) cfg.loc = L.length === 1 ? L[0].nombre : '';
-    const loc = L.find(l => l.nombre === cfg.loc);
-    if (!loc || !loc.carriles.some(c => c.tipo + '|' + c.num === cfg.lane)) cfg.lane = '';
-    $('locOpts').innerHTML = L.map(l => `<button class="opt ${l.nombre === cfg.loc ? 'on' : ''}" data-loc="${esc(l.nombre)}">${esc(l.nombre)}</button>`).join('');
-    $('laneOpts').innerHTML = loc
-      ? loc.carriles.map(c => { const k = c.tipo + '|' + c.num;
-          return `<button class="opt ${k === cfg.lane ? 'on' : ''}" data-lane="${esc(k)}"><small>${esc(c.tipo)}</small>Carril ${esc(c.num)}</button>`; }).join('')
-      : '<p class="hint">Primero elige la ubicación.</p>';
+    const { pt, av } = seleccion();
+    $('puntoOpts').innerHTML = puntos().map(p => {
+      const lugares = [...new Set(p.avenidas.map(a => a.lugar).filter(Boolean))];
+      return `<button class="opt ${p.num === cfg.punto ? 'on' : ''}" data-punto="${esc(p.num)}"><span class="pn">${esc(p.num)}</span>
+        <span class="pl">${lugares.map(esc).join('<br>')}</span></button>`;
+    }).join('');
+    $('aveOpts').innerHTML = pt
+      ? pt.avenidas.map(a => `<button class="opt ${a.avenida === cfg.avenida ? 'on' : ''}" data-ave="${esc(a.avenida)}">${esc(aveCorta(a.avenida))}<small>${esc(a.lugar)}</small></button>`).join('')
+      : '<p class="hint">Primero elige el punto.</p>';
+    $('laneOpts').innerHTML = av
+      ? av.carriles.map(c => `<button class="opt big ${c.num === cfg.carril ? 'on' : ''}" data-carril="${esc(c.num)}">${esc(c.num)}</button>`).join('')
+      : '<p class="hint">Primero elige la avenida.</p>';
     $('fObs').value = cfg.obs || '';
     updateStart();
     $('bResume').style.display = active ? 'block' : 'none';
@@ -233,24 +264,28 @@
       const d = new Date(s.start);
       const st = s.uploaded ? '<span class="ok">✓ subida</span>' : '<span class="warn">● pendiente de subir</span>';
       return `<div class="card" data-sid="${esc(s.id)}"><div class="t">${esc(laneName(s))}</div>
-        <div class="hint">${esc(s.loc)} · ${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.ev.length} autos · ${st}</div></div>`;
+        <div class="hint">${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${esc(s.obs || '')} · ${s.ev.length} autos · ${st}</div></div>`;
     }).join('') : '<p class="hint">Aún no hay sesiones.</p>';
     renderCfgState();
   }
   function updateStart() {
-    const b = $('bStart'), [tipo, num] = (cfg.lane || '').split('|');
-    const ready = cfg.loc && cfg.lane && (cfg.obs || '').trim();
-    b.disabled = !ready;
-    b.textContent = cfg.lane ? `▶ Empezar: ${tipo} · Carril ${num}` : '▶ Empezar conteo';
+    const b = $('bStart'), { ca } = seleccion();
+    b.disabled = !(ca && (cfg.obs || '').trim());
+    b.textContent = ca ? `▶ Empezar: Punto ${cfg.punto} · ${aveCorta(cfg.avenida)} · Carril ${cfg.carril}` : '▶ Empezar conteo';
   }
-  $('locOpts').addEventListener('click', e => {
-    const b = e.target.closest('[data-loc]'); if (!b) return;
-    if (cfg.loc !== b.dataset.loc) { cfg.loc = b.dataset.loc; cfg.lane = ''; }
+  $('puntoOpts').addEventListener('click', e => {
+    const b = e.target.closest('[data-punto]'); if (!b) return;
+    if (cfg.punto !== b.dataset.punto) { cfg.punto = b.dataset.punto; cfg.avenida = ''; cfg.carril = ''; }
+    save(LS.cfg, cfg); renderHome();
+  });
+  $('aveOpts').addEventListener('click', e => {
+    const b = e.target.closest('[data-ave]'); if (!b) return;
+    if (cfg.avenida !== b.dataset.ave) { cfg.avenida = b.dataset.ave; cfg.carril = ''; }
     save(LS.cfg, cfg); renderHome();
   });
   $('laneOpts').addEventListener('click', e => {
-    const b = e.target.closest('[data-lane]'); if (!b) return;
-    cfg.lane = b.dataset.lane; save(LS.cfg, cfg); renderHome();
+    const b = e.target.closest('[data-carril]'); if (!b) return;
+    cfg.carril = b.dataset.carril; save(LS.cfg, cfg); renderHome();
   });
   $('fObs').addEventListener('input', () => { cfg.obs = $('fObs').value; save(LS.cfg, cfg); updateStart(); });
   $('sessList').addEventListener('click', e => {
@@ -258,11 +293,11 @@
     viewing = sessions.find(s => s.id === c.dataset.sid); if (viewing) renderSummary();
   });
   $('bStart').addEventListener('click', () => {
-    const [tipo, num] = (cfg.lane || '').split('|');
+    const { av, ca } = seleccion();
     const obs = (cfg.obs || '').trim();
-    if (!cfg.loc || !tipo || !obs) return;
-    active = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), loc: cfg.loc, tipo, num, obs,
-               start: Date.now(), ev: [] };
+    if (!ca || !obs) return;
+    active = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), punto: cfg.punto, avenida: av.avenida,
+               lugar: av.lugar, num: ca.num, tipo: ca.tipo, obs, start: Date.now(), ev: [] };
     save(LS.active, active);
     startCounting();
   });
@@ -275,7 +310,7 @@
     counts = [0, 0, 0, 0];   // [_, 1, 2, 3+]
     for (const [, o] of active.ev) counts[o]++;
     $('cLane').textContent = laneName(active);
-    $('cLoc').textContent = active.loc + ' · ' + active.obs;
+    $('cLoc').textContent = (active.lugar || active.loc || '') + ' · ' + active.obs;
     $('pads').innerHTML = `<div class="lane"><div class="keys">${OCC.map(o => `
       <div class="key k${o.v}" data-o="${o.v}">
         <div class="big">${o.big}</div><div class="lbl">${o.lbl}</div><div class="n" id="n${o.v}">0</div>
@@ -340,9 +375,9 @@
   // ---------- Resumen ----------
   function renderSummary() {
     const s = viewing, d = new Date(s.start);
-    $('sTitle').textContent = s.loc;
-    $('sLane').textContent = laneName(s);
-    $('sMeta').textContent = `${ymd(d)} · ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.obs || 'sin observador'} · ${s.ev.length} autos`;
+    $('sTitle').textContent = s.avenida ? `Punto ${s.punto} · ${aveCorta(s.avenida)}` : (s.loc || '');
+    $('sLane').textContent = `Carril ${s.num}`;
+    $('sMeta').textContent = `${s.lugar ? s.lugar + ' · ' : ''}${ymd(d)} · ${hhmm(d)}–${hhmm(new Date(s.end))} · ${s.obs || 'sin observador'} · ${s.ev.length} autos`;
     const per = new Map();
     for (const [t, o] of s.ev) {
       const key = periodStart(t).getTime();
@@ -379,8 +414,8 @@
       // Antes de mandar datos se confirma que el script de la hoja es la versión correcta
       const info = await getJSON(SHEETS_URL + '?accion=config');
       if (!(info.version >= SCRIPT_MIN)) throw new Error('el script de Google Sheets está desactualizado (avisa al coordinador)');
-      const payload = { sessionId: s.id, ubicacion: s.loc, tipo: s.tipo, carril: s.num, observador: s.obs,
-                        inicio: s.start, fin: s.end, registros: rowsFor(s) };
+      const payload = { sessionId: s.id, punto: s.punto || '', avenida: s.avenida || s.loc, lugar: s.lugar || '',
+                        tipo: s.tipo, carril: s.num, observador: s.obs, inicio: s.start, fin: s.end, registros: rowsFor(s) };
       // text/plain evita el "preflight" CORS que Apps Script no soporta.
       // Hasta 150 s: si varios teléfonos suben a la vez, el script los atiende en fila.
       const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 150000);
@@ -402,10 +437,10 @@
   });
   $('bCsv').addEventListener('click', async () => {
     const s = viewing;
-    const lines = [['sesion', 'ubicacion', 'observador', 'tipo', 'carril', 'fecha', 'hora', 'periodo', 'ocupantes'].join(',')]
-      .concat(rowsFor(s).map(r => [s.id, s.loc, s.obs, s.tipo, s.num, r.fecha, r.hora, r.periodo, r.ocupantes]
+    const lines = [['sesion', 'punto', 'avenida', 'lugar', 'observador', 'tipo', 'carril', 'fecha', 'hora', 'periodo', 'ocupantes'].join(',')]
+      .concat(rowsFor(s).map(r => [s.id, s.punto || '', s.avenida || s.loc, s.lugar || '', s.obs, s.tipo, s.num, r.fecha, r.hora, r.periodo, r.ocupantes]
         .map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')));
-    const name = `ocupacion_${s.loc.replace(/\W+/g, '_')}_${s.tipo}_C${s.num}_${ymd(new Date(s.start))}_${s.id}.csv`;
+    const name = `ocupacion_P${s.punto || ''}_${aveCorta(s.avenida || s.loc).replace(/[^A-Za-z0-9]+/g, '_')}_C${s.num}_${ymd(new Date(s.start))}_${s.id}.csv`;
     const file = new File(['﻿' + lines.join('\n')], name, { type: 'text/csv' });
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ files: [file], title: name }); return; } catch (e) { if (e.name === 'AbortError') return; }
@@ -423,8 +458,8 @@
   // ---------- Arranque ----------
   renderHome();
   if (active) startCounting();   // si la app se cerró a medio conteo, regresa directo a contar
-  refreshLanes();
-  window.addEventListener('online', refreshLanes);
+  refreshPuntos();
+  window.addEventListener('online', refreshPuntos);
   if ('serviceWorker' in navigator) {
     // Cuando se publica una versión nueva, se aplica sola (nunca a media cuenta: solo si no hay conteo en curso)
     const hadSW = !!navigator.serviceWorker.controller;
