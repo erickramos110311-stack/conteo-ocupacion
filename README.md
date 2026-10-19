@@ -7,7 +7,8 @@ App para iPhone y Android para estudios de ocupación vehicular. **Cada observad
 ## Estructura
 - `app/`: la app. Cada push a `main` que cambie esta carpeta la publica sola en GitHub Pages.
 - `Code.gs`: script que recibe los datos en Google Sheets
-- `.github/workflows/pages.yml`: publicación automática
+- `.github/workflows/pages.yml`: publicación automática de la app
+- `publicar-script.sh`: publica `Code.gs` en Google Apps Script con un comando
 
 ## 1. Preparar Google Sheets (una sola vez)
 1. Crea una hoja nueva en Google Sheets → **Extensiones → Apps Script**.
@@ -30,7 +31,13 @@ La pestaña **Carriles** de la hoja es la lista que ven los observadores en la a
 - Los teléfonos descargan la lista cada vez que abren la app con internet.
 
 ### Si cambias `Code.gs` después
- Implementar → Administrar implementaciones → editar (lápiz) → Versión: **Nueva versión**. Así la URL no cambia y no hay que tocar la app. No uses "Nueva implementación", porque esa crea otra URL.
+Ya no hay que copiar y pegar nada en Apps Script. Desde esta carpeta:
+
+```bash
+./publicar-script.sh "qué cambió"
+```
+
+El comando sube `Code.gs` al proyecto de Apps Script de la hoja, crea una versión nueva y la publica en la **misma URL** que usa la app. Antes guarda una copia de lo que estaba publicado en `.respaldo-script-anterior.js`. Solo pide haber conectado la cuenta una vez en esta computadora con `npx @google/clasp login` (cuenta encuestasmpu@gmail.com) y tener activada la API en script.google.com/home/usersettings.
 
 ## 2. Publicación
 Ya está publicada en GitHub Pages (ver URL arriba).
