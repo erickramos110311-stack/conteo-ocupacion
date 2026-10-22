@@ -100,7 +100,11 @@
   <div class="scroll">
     <h1>🚗 Conteo de ocupación vehicular</h1>
     <button class="btn primary" id="bInstall" style="display:none;margin:0 0 6px">📲 Instalar la app en este teléfono</button>
-    <p class="hint" id="installHint" style="display:none;margin:0 0 6px"></p>
+    <div class="card" id="iosGuide" style="display:none;border:2px solid var(--accent);margin:0 0 10px">
+      <div class="t">📲 Instala la app en tu iPhone</div>
+      <ol id="iosSteps" style="margin:8px 0 6px;padding-left:22px;line-height:1.6"></ol>
+      <p class="hint" style="margin:0">Después ábrela siempre desde el ícono amarillo <b>"Ocupación"</b>. Así funciona sin internet.</p>
+    </div>
 
     <label>1. ¿En qué punto estás?</label>
     <div class="opts one" id="puntoOpts"></div>
@@ -488,9 +492,18 @@
     installEvt = null; $('bInstall').style.display = 'none';
   });
   window.addEventListener('appinstalled', () => { $('bInstall').style.display = 'none'; toast('✓ App instalada: ábrela desde el ícono amarillo "Ocupación"', 4000); });
-  if (!instalada && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
-    $('installHint').textContent = 'Para instalarla: en Safari toca Compartir (cuadrito con flecha ⬆️) → "Agregar a pantalla de inicio".';
-    $('installHint').style.display = 'block';
+  // En iPhone/iPad Apple no deja instalar con un botón: se muestran los pasos según el navegador
+  const ua = navigator.userAgent;
+  const esIOS = /iphone|ipad|ipod/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (!instalada && esIOS) {
+    const pasos = /CriOS|EdgiOS|FxiOS/.test(ua)
+      ? ['Toca el botón <b>Compartir</b> <b>⬆️</b> (arriba, junto a la dirección).', 'Toca <b>"Agregar a pantalla de inicio"</b>.', 'Toca <b>"Agregar"</b>.']
+      : /FBAN|FBAV|Instagram|Line\//.test(ua)
+      ? ['Este link se abrió dentro de otra app. Toca <b>⋯</b> y elige <b>"Abrir en Safari"</b>.', 'En Safari toca <b>Compartir</b> <b>⬆️</b> (abajo, al centro).', 'Toca <b>"Agregar a pantalla de inicio"</b> y luego <b>"Agregar"</b>.']
+      : ['Toca el botón <b>Compartir</b> <b>⬆️</b> (abajo, al centro; el cuadrito con flecha).', 'Baja en la lista y toca <b>"Agregar a pantalla de inicio"</b>.', 'Toca <b>"Agregar"</b> (arriba a la derecha).',
+         'Si abriste el link desde WhatsApp y no ves "Compartir", toca primero la <b>brújula 🧭</b> para abrirlo en Safari.'];
+    $('iosSteps').innerHTML = pasos.map(x => '<li>' + x + '</li>').join('');
+    $('iosGuide').style.display = 'block';
   }
 
   // ---------- Arranque ----------
