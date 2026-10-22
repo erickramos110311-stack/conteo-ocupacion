@@ -124,6 +124,7 @@
 
     <h2>Sesiones guardadas</h2>
     <div id="sessList"><p class="hint">Aún no hay sesiones.</p></div>
+    <button class="btn danger" id="bClear" style="display:none">🗑 Borrar historial de este teléfono</button>
   </div>
 </section>
 
@@ -276,6 +277,7 @@
       return `<div class="card" data-sid="${esc(s.id)}"><div class="t">${esc(laneName(s))}</div>
         <div class="hint">${ymd(d)} ${hhmm(d)}–${hhmm(new Date(s.end))} · ${esc(s.obs || '')} · ${s.ev.length} autos · ${st}</div></div>`;
     }).join('') : '<p class="hint">Aún no hay sesiones.</p>';
+    $('bClear').style.display = sessions.length ? 'block' : 'none';
     renderCfgState();
   }
   function updateStart() {
@@ -312,6 +314,15 @@
     startCounting();
   });
   $('bResume').addEventListener('click', startCounting);
+  // Borra del teléfono las sesiones ya subidas; las pendientes de subir NUNCA se borran desde aquí
+  $('bClear').addEventListener('click', () => {
+    const subidas = sessions.filter(s => s.uploaded).length, pendientes = sessions.length - subidas;
+    if (!subidas) return toast(pendientes ? 'Primero sube tus conteos pendientes; los pendientes no se borran' : 'No hay historial', 3500);
+    if (!confirm(`¿Borrar del teléfono ${subidas} conteo${subidas > 1 ? 's' : ''} ya subido${subidas > 1 ? 's' : ''}?` +
+                 (pendientes ? `\n\n${pendientes} pendiente${pendientes > 1 ? 's' : ''} de subir se queda${pendientes > 1 ? 'n' : ''} guardado${pendientes > 1 ? 's' : ''}.` : ''))) return;
+    sessions = sessions.filter(s => !s.uploaded); save(LS.sessions, sessions); renderHome();
+    toast('✓ Historial borrado');
+  });
 
   // ---------- Conteo (ruta crítica: lo más rápido posible) ----------
   let counts, countEls, totEl, saveTimer, clockTimer, wakeLock;

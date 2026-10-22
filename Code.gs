@@ -167,7 +167,11 @@ function doPost(e) {
 
 /** Menú en la hoja para recalcular a mano (por ejemplo después de cambiar qué carriles son Express) */
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Conteo').addItem('Recalcular resumen', 'recalcularResumen').addToUi();
+  SpreadsheetApp.getUi().createMenu('Conteo')
+    .addItem('Recalcular resumen', 'recalcularResumen')
+    .addSeparator()
+    .addItem('Borrar todos los datos (empezar de cero)', 'borrarTodoMenu')
+    .addToUi();
 }
 function recalcularResumen() {
   const lock = LockService.getScriptLock();
@@ -188,6 +192,30 @@ function sumarRegistros(registros) {
     if (o === '1') g[k].n1++; else if (o === '2') g[k].n2++; else g[k].n3++;
   });
   return out;
+}
+
+/** Menú Conteo → Borrar todos los datos: pide confirmación */
+function borrarTodoMenu() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.alert('Borrar todos los datos',
+    'Se borran todos los conteos subidos (Registros, Resumen y Por carril) y las pestañas de respaldo de versiones anteriores.\n' +
+    'La pestaña Puntos NO se toca.\n\n¿Continuar?', ui.ButtonSet.YES_NO);
+  if (r !== ui.Button.YES) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(120000);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  try { borrarTodo(ss); } finally { lock.releaseLock(); }
+  ss.toast('Listo: la hoja quedó en ceros');
+}
+
+/** Deja la hoja lista para un estudio nuevo. Puntos no se toca. (Llamar con el candado tomado.) */
+function borrarTodo(ss) {
+  // Pestañas de respaldo que dejaron las versiones anteriores
+  ss.getSheets().forEach(h => { if (/^(Registros|Carriles) \(/.test(h.getName())) ss.deleteSheet(h); });
+  const reg = ss.getSheetByName(HOJA_REG);
+  if (reg && reg.getLastRow() > 1) reg.getRange(2, 1, reg.getLastRow() - 1, Math.max(reg.getLastColumn(), ENCABEZADOS.length)).clear();
+  hojaRegistros(ss);
+  construirResumen(ss);
 }
 
 /** Hoja Registros con los encabezados de esta versión. Si existe con otro formato, la convierte o la guarda aparte. */

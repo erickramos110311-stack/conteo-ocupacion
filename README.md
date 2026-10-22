@@ -76,6 +76,10 @@ En el renglón 1 de **Resumen** y de **Por carril** hay dos listas desplegables:
 
 Al elegir, la pestaña muestra solo esas tablas. El renglón 2 dice qué se está mostrando. No se borra nada: elige "Todos" para ver todo otra vez. Cada pestaña tiene sus propios selectores.
 
+## Empezar de cero
+- **En la hoja:** menú **Conteo → Borrar todos los datos (empezar de cero)**. Pide confirmación; borra Registros, Resumen, Por carril y las pestañas de respaldo de versiones anteriores. La pestaña **Puntos** no se toca.
+- **En cada teléfono:** botón **🗑 Borrar historial de este teléfono** (abajo de "Sesiones guardadas"). Solo borra conteos ya subidos; los pendientes de subir nunca se borran desde ahí.
+
 ## Recomendaciones
 - Una persona por carril y un teléfono cada quien. Antes de salir a campo, asigna a cada observador su carril.
 - Sincroniza la hora de los teléfonos (automática) para que los periodos coincidan.
