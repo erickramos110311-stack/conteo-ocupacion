@@ -147,11 +147,15 @@ function doPost(e) {
       reg.getRange(inicio, 1, filas.length, ENCABEZADOS.length).setValues(filas);
       SpreadsheetApp.flush();
     }
+    const props = PropertiesService.getScriptProperties(), marca = sid + '|' + Date.now();
+    props.setProperty('ultimaSubida', marca);
     lock.releaseLock();
 
-    // Recalcular resúmenes solo si nadie más está usando la hoja. Si alguien sí, esa subida
-    // recalculará al terminar e incluirá estos renglones (o usa el menú Conteo → Recalcular resumen).
-    if (lock.tryLock(0)) construirResumen(ss);
+    // Al terminar el turno llegan muchas subidas juntas: cada una solo guarda sus renglones (rápido) y
+    // los resúmenes se recalculan UNA vez, cuando dejan de llegar. La última subida (nadie más subió en
+    // 3 segundos) es la que recalcula; las demás terminan de inmediato.
+    Utilities.sleep(3000);
+    if (props.getProperty('ultimaSubida') === marca && lock.tryLock(60000)) construirResumen(ss);
     // Las apps anteriores muestran "filas" como número de autos subidos
     return json({ ok: true, version: VERSION_SCRIPT, filas: Array.isArray(d.totales) ? filas.length : autos, autos: autos });
   } catch (err) {
@@ -331,12 +335,21 @@ function selectores(ss, hoja, opciones) {
     hoja.getRange(1, 5).setBackground('#e8f0fe');
     hoja.getRange(1, 4).setHorizontalAlignment('right');
     hoja.setFrozenRows(1);
+    hoja.setColumnWidths(1, 2, 70);
+    hoja.setColumnWidths(3, 6, 110);
+    PropertiesService.getScriptProperties().deleteProperty('listas|' + hoja.getName());
   }
-  const leer = c => { const v = hoja.getRange(1, c).getValue(); return v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim(); };
-  const dia = leer(3) || TODOS_DIAS, punto = leer(5) || TODOS_PUNTOS;
-  // Las listas se actualizan con los días y puntos que hay (lo elegido se respeta)
-  hoja.getRange(1, 3).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(opciones.dias, true).setAllowInvalid(true).build());
-  hoja.getRange(1, 5).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(opciones.puntos, true).setAllowInvalid(true).build());
+  const r1 = hoja.getRange(1, 1, 1, 5).getValues()[0];
+  const leer = v => v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
+  const dia = leer(r1[2]) || TODOS_DIAS, punto = leer(r1[4]) || TODOS_PUNTOS;
+  // Las listas se actualizan con los días y puntos que hay (lo elegido se respeta); solo si cambiaron
+  const props = PropertiesService.getScriptProperties(), clave = 'listas|' + hoja.getName();
+  const listas = JSON.stringify([opciones.dias, opciones.puntos]);
+  if (props.getProperty(clave) !== listas) {
+    hoja.getRange(1, 3).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(opciones.dias, true).setAllowInvalid(true).build());
+    hoja.getRange(1, 5).setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(opciones.puntos, true).setAllowInvalid(true).build());
+    props.setProperty(clave, listas);
+  }
   return { dia: dia, punto: punto };
 }
 
@@ -344,7 +357,8 @@ function escribirTablas(ss, nombre, grupos, opciones) {
   const hoja = ss.getSheetByName(nombre) || ss.insertSheet(nombre);
   const sel = selectores(ss, hoja, opciones);
   // Se borra todo menos los renglones 1 (selectores) y 2 (estado: se escribe al final, cuando las tablas ya están completas)
-  hoja.getRange(3, 1, Math.max(1, hoja.getMaxRows() - 2), hoja.getMaxColumns()).clear();
+  const ultima = hoja.getLastRow();
+  if (ultima >= 3) hoja.getRange(3, 1, ultima - 2, 8).clear();
   const claves = Object.keys(grupos).sort().filter(k => {
     const g = grupos[k];
     return (sel.dia === TODOS_DIAS || g.fecha === sel.dia) && (sel.punto === TODOS_PUNTOS || etiquetaPunto(g.punto) === sel.punto);
@@ -388,8 +402,6 @@ function escribirTablas(ss, nombre, grupos, opciones) {
   rg.setNumberFormats(num); // antes de los valores: así "07:30" se queda como texto y no se convierte en hora
   rg.setValues(val);
   rg.setBackgrounds(fondo).setFontColors(color).setFontWeights(peso).setFontSizes(tam).setWraps(ajuste).setHorizontalAlignments(alin);
-  hoja.setColumnWidths(1, 2, 70);
-  hoja.setColumnWidths(3, 6, 110);
   estado('Mostrando ' + claves.length + (claves.length === 1 ? ' tabla' : ' tablas') + ' · ' + filtro);
 }
 

@@ -432,9 +432,6 @@
     if (!navigator.onLine) return toast('Sin internet. Los datos siguen guardados; intenta al tener señal.', 3500);
     const btn = $('bUpload'); btn.disabled = true; btn.textContent = 'Subiendo…';
     try {
-      // Antes de mandar datos se confirma que el script de la hoja es la versión correcta
-      const info = await getJSON(SHEETS_URL + '?accion=config');
-      if (!(info.version >= SCRIPT_MIN)) throw new Error('el script de Google Sheets está desactualizado (avisa al coordinador)');
       const payload = { sessionId: s.id, punto: s.punto || '', avenida: s.avenida || s.loc, lugar: s.lugar || '',
                         tipo: s.tipo, carril: s.num, observador: s.obs, inicio: s.start, fin: s.end, totales: totalesFor(s) };
       // text/plain evita el "preflight" CORS que Apps Script no soporta.
@@ -447,6 +444,7 @@
         try { j = JSON.parse(txt); } catch { throw new Error('Google no respondió bien, intenta de nuevo en un minuto'); }
       } finally { clearTimeout(tm); }
       if (!j.ok) throw new Error(j.error || 'respuesta inválida');
+      if (!(j.version >= SCRIPT_MIN)) throw new Error('el script de Google Sheets está desactualizado (avisa al coordinador)');
       s.uploaded = true; s.uploadedAt = Date.now(); save(LS.sessions, sessions);
       toast(`✓ ${(j.autos != null ? j.autos : s.ev.length).toLocaleString('es-MX')} autos subidos`);
       // Solo se repinta la pantalla en la que está el observador (nunca se le quita la pantalla de conteo)
