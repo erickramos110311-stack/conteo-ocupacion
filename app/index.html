@@ -99,6 +99,8 @@
 <section id="home" class="screen on">
   <div class="scroll">
     <h1>🚗 Conteo de ocupación vehicular</h1>
+    <button class="btn primary" id="bInstall" style="display:none;margin:0 0 6px">📲 Instalar la app en este teléfono</button>
+    <p class="hint" id="installHint" style="display:none;margin:0 0 6px"></p>
 
     <label>1. ¿En qué punto estás?</label>
     <div class="opts one" id="puntoOpts"></div>
@@ -469,6 +471,27 @@
     if (!confirm(s.uploaded ? '¿Borrar esta sesión del teléfono?' : '⚠ Esta sesión NO se ha subido. ¿Borrarla de todos modos?')) return;
     sessions = sessions.filter(x => x !== s); save(LS.sessions, sessions); renderHome(); show('home');
   });
+
+  // ---------- Instalar en la pantalla de inicio ----------
+  // Android/Chrome avisa con "beforeinstallprompt" cuando la app se puede instalar: se muestra un botón propio
+  // (así nadie tiene que buscar la opción en el menú de Chrome). En iPhone se explica cómo hacerlo desde Safari.
+  const instalada = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); installEvt = e;
+    if (!instalada) $('bInstall').style.display = 'block';
+  });
+  $('bInstall').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch {}
+    installEvt = null; $('bInstall').style.display = 'none';
+  });
+  window.addEventListener('appinstalled', () => { $('bInstall').style.display = 'none'; toast('✓ App instalada: ábrela desde el ícono amarillo "Ocupación"', 4000); });
+  if (!instalada && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    $('installHint').textContent = 'Para instalarla: en Safari toca Compartir (cuadrito con flecha ⬆️) → "Agregar a pantalla de inicio".';
+    $('installHint').style.display = 'block';
+  }
 
   // ---------- Arranque ----------
   renderHome();
