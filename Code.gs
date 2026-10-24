@@ -170,6 +170,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Conteo')
     .addItem('Recalcular resumen', 'recalcularResumen')
     .addSeparator()
+    .addItem('Borrar los datos de un día', 'borrarDiaMenu')
     .addItem('Borrar todos los datos (empezar de cero)', 'borrarTodoMenu')
     .addToUi();
 }
@@ -206,6 +207,50 @@ function borrarTodoMenu() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   try { borrarTodo(ss); } finally { lock.releaseLock(); }
   ss.toast('Listo: la hoja quedó en ceros');
+}
+
+/** Menú Conteo → Borrar los datos de un día: pide la fecha y confirmación */
+function borrarDiaMenu() {
+  const ui = SpreadsheetApp.getUi(), ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hoy = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+  const r = ui.prompt('Borrar los datos de un día', 'Escribe la fecha a borrar (año-mes-día). Para hoy deja: ' + hoy, ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const fecha = String(r.getResponseText() || hoy).trim() || hoy;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { ui.alert('La fecha debe verse así: ' + hoy); return; }
+  if (ui.alert('Borrar los datos de un día', '¿Borrar todos los conteos del ' + fecha + '? La pestaña Puntos no se toca.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(120000);
+  let res;
+  try { res = borrarDia(ss, fecha); } finally { lock.releaseLock(); }
+  ss.toast(res.borrados ? 'Listo: se borraron ' + res.borrados + ' renglones del ' + fecha : 'No había datos del ' + fecha);
+}
+
+/** Borra de Registros los renglones de una fecha y recalcula. Devuelve {borrados, sesiones, quedan: {fecha: renglones}} (con el candado tomado) */
+function borrarDia(ss, fecha) {
+  const reg = hojaRegistros(ss);
+  const quedan = {}, sesiones = {};
+  let borrados = 0;
+  if (reg.getLastRow() > 1) {
+    const tz = ss.getSpreadsheetTimeZone();
+    const txt = v => v instanceof Date ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v).trim();
+    const datos = reg.getRange(2, 1, reg.getLastRow() - 1, ENCABEZADOS.length).getValues();
+    const resto = datos.filter(r => {
+      const f = txt(r[7]);
+      if (f === fecha) { borrados++; sesiones[r[0]] = true; return false; }
+      quedan[f] = (quedan[f] || 0) + 1;
+      return true;
+    });
+    if (borrados) {
+      reg.getRange(2, 1, datos.length, ENCABEZADOS.length).clear();
+      if (resto.length) {
+        reg.getRange(2, 2, resto.length, 1).setNumberFormat('@');
+        reg.getRange(2, 7, resto.length, 3).setNumberFormat('@');
+        reg.getRange(2, 1, resto.length, ENCABEZADOS.length).setValues(resto.map(r => r.map((v, i) => (i === 1 || (i >= 6 && i <= 8)) ? txt(v) : v)));
+      }
+    }
+  }
+  construirResumen(ss);
+  return { borrados: borrados, sesiones: Object.keys(sesiones).length, quedan: quedan };
 }
 
 /** Deja la hoja lista para un estudio nuevo. Puntos no se toca. (Llamar con el candado tomado.) */
